@@ -1,0 +1,26 @@
+# --- Реальные конфиги с ключами (НЕ пушим). Пример — только *.example ---
+*.conf
+!*.conf.example
+
+# --- Секреты и личные данные ---
+vpn-credentials.md
+vpn-qr.png
+*.png
+*.key
+*.pem
+.env*
+creds*
+*secret*
+*_credentials*
+
+# --- Личный генератор (содержит адрес сервера/токены) ---
+generate_shadowrocket_conf.py
+
+# --- Бинарники и geo-базы xray (тянутся отдельно, не место в git) ---
+bin/
+
+# --- Мусор ---
+.DS_Store
+results.json
+results.txt
+.claude/

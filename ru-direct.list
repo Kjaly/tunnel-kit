@@ -1,0 +1,186 @@
+# === Российские домены — DIRECT (не через VPN) ===
+# Обновлено: 2026-04-07
+# Используется в Shadowrocket через RULE-SET
+
+# --- Банки ---
+DOMAIN-SUFFIX,sberbank.ru
+DOMAIN-SUFFIX,sber.ru
+DOMAIN-SUFFIX,sbermarket.ru
+DOMAIN-SUFFIX,tinkoff.ru
+DOMAIN-SUFFIX,tbank.ru
+DOMAIN-SUFFIX,vtb.ru
+DOMAIN-SUFFIX,alfabank.ru
+DOMAIN-SUFFIX,alfa.me
+DOMAIN-SUFFIX,gazprombank.ru
+DOMAIN-SUFFIX,raiffeisen.ru
+DOMAIN-SUFFIX,rshb.ru
+DOMAIN-SUFFIX,open.ru
+DOMAIN-SUFFIX,sovcombank.ru
+DOMAIN-SUFFIX,psbank.ru
+DOMAIN-SUFFIX,homecredit.ru
+DOMAIN-SUFFIX,mkb.ru
+DOMAIN-SUFFIX,rosbank.ru
+DOMAIN-SUFFIX,pochtabank.ru
+DOMAIN-SUFFIX,otpbank.ru
+DOMAIN-SUFFIX,uralsib.ru
+DOMAIN-SUFFIX,unicreditbank.ru
+
+# --- Госуслуги и государство ---
+DOMAIN-SUFFIX,gosuslugi.ru
+DOMAIN-SUFFIX,mos.ru
+DOMAIN-SUFFIX,nalog.gov.ru
+DOMAIN-SUFFIX,nalog.ru
+DOMAIN-SUFFIX,pfr.gov.ru
+DOMAIN-SUFFIX,sfr.gov.ru
+DOMAIN-SUFFIX,cbr.ru
+DOMAIN-SUFFIX,government.ru
+DOMAIN-SUFFIX,kremlin.ru
+DOMAIN-SUFFIX,duma.gov.ru
+DOMAIN-SUFFIX,zakupki.gov.ru
+DOMAIN-SUFFIX,torgi.gov.ru
+DOMAIN-SUFFIX,fns.su
+DOMAIN-SUFFIX,fss.ru
+DOMAIN-SUFFIX,rostrud.gov.ru
+DOMAIN-SUFFIX,rpn.gov.ru
+DOMAIN-SUFFIX,gibdd.ru
+DOMAIN-SUFFIX,fsin.gov.ru
+
+# --- Маркетплейсы и e-commerce ---
+DOMAIN-SUFFIX,wildberries.ru
+DOMAIN-SUFFIX,wbbasket.ru
+DOMAIN-SUFFIX,wb.ru
+DOMAIN-SUFFIX,ozon.ru
+DOMAIN-SUFFIX,ozon.st
+DOMAIN-SUFFIX,market.yandex.ru
+DOMAIN-SUFFIX,lamoda.ru
+DOMAIN-SUFFIX,dns-shop.ru
+DOMAIN-SUFFIX,citilink.ru
+DOMAIN-SUFFIX,mvideo.ru
+DOMAIN-SUFFIX,eldorado.ru
+DOMAIN-SUFFIX,sbermegamarket.ru
+DOMAIN-SUFFIX,megamarket.ru
+DOMAIN-SUFFIX,avito.ru
+DOMAIN-SUFFIX,youla.ru
+DOMAIN-SUFFIX,leroymerlin.ru
+DOMAIN-SUFFIX,vseinstrumenti.ru
+DOMAIN-SUFFIX,petrovich.ru
+DOMAIN-SUFFIX,detmir.ru
+DOMAIN-SUFFIX,sportmaster.ru
+
+# --- Яндекс экосистема ---
+DOMAIN-SUFFIX,yandex.ru
+DOMAIN-SUFFIX,yandex.net
+DOMAIN-SUFFIX,yandex.com
+DOMAIN-SUFFIX,yandex.by
+DOMAIN-SUFFIX,yandex.kz
+DOMAIN-SUFFIX,yandex.ua
+DOMAIN-SUFFIX,yastatic.net
+DOMAIN-SUFFIX,yandexcloud.net
+DOMAIN-SUFFIX,ya.ru
+DOMAIN-SUFFIX,yandex.st
+DOMAIN-SUFFIX,yandex-team.ru
+DOMAIN-SUFFIX,disk.yandex.ru
+DOMAIN-SUFFIX,music.yandex.ru
+DOMAIN-SUFFIX,plus.yandex.ru
+
+# --- VK / Mail.ru экосистема ---
+DOMAIN-SUFFIX,vk.com
+DOMAIN-SUFFIX,vk.me
+DOMAIN-SUFFIX,vk.cc
+DOMAIN-SUFFIX,vkuserid.com
+DOMAIN-SUFFIX,vkcdn.net
+DOMAIN-SUFFIX,userapi.com
+DOMAIN-SUFFIX,ok.ru
+DOMAIN-SUFFIX,odnoklassniki.ru
+DOMAIN-SUFFIX,mail.ru
+DOMAIN-SUFFIX,my.mail.ru
+DOMAIN-SUFFIX,list.ru
+DOMAIN-SUFFIX,bk.ru
+DOMAIN-SUFFIX,inbox.ru
+DOMAIN-SUFFIX,mycdn.me
+
+# --- Медиа и стриминг ---
+DOMAIN-SUFFIX,dzen.ru
+DOMAIN-SUFFIX,rutube.ru
+DOMAIN-SUFFIX,ivi.ru
+DOMAIN-SUFFIX,kinopoisk.ru
+DOMAIN-SUFFIX,okko.tv
+DOMAIN-SUFFIX,wink.ru
+DOMAIN-SUFFIX,more.tv
+DOMAIN-SUFFIX,premier.one
+DOMAIN-SUFFIX,start.ru
+DOMAIN-SUFFIX,amediateka.ru
+DOMAIN-SUFFIX,kion.ru
+
+# --- Телеком ---
+DOMAIN-SUFFIX,mts.ru
+DOMAIN-SUFFIX,beeline.ru
+DOMAIN-SUFFIX,megafon.ru
+DOMAIN-SUFFIX,tele2.ru
+DOMAIN-SUFFIX,rt.ru
+DOMAIN-SUFFIX,rostelecom.ru
+DOMAIN-SUFFIX,ttk.ru
+DOMAIN-SUFFIX,domru.ru
+
+# --- Карты и навигация ---
+DOMAIN-SUFFIX,2gis.ru
+DOMAIN-SUFFIX,2gis.com
+
+# --- Работа и бизнес ---
+DOMAIN-SUFFIX,1c.ru
+DOMAIN-SUFFIX,1c-bitrix.ru
+DOMAIN-SUFFIX,bitrix24.ru
+DOMAIN-SUFFIX,kontur.ru
+DOMAIN-SUFFIX,skbkontur.ru
+DOMAIN-SUFFIX,hh.ru
+DOMAIN-SUFFIX,superjob.ru
+DOMAIN-SUFFIX,rabota.ru
+
+# --- Новости и медиа ---
+DOMAIN-SUFFIX,rbc.ru
+DOMAIN-SUFFIX,lenta.ru
+DOMAIN-SUFFIX,ria.ru
+DOMAIN-SUFFIX,tass.ru
+DOMAIN-SUFFIX,kommersant.ru
+DOMAIN-SUFFIX,vedomosti.ru
+DOMAIN-SUFFIX,fontanka.ru
+DOMAIN-SUFFIX,iz.ru
+DOMAIN-SUFFIX,kp.ru
+DOMAIN-SUFFIX,aif.ru
+
+# --- IT и сообщества ---
+DOMAIN-SUFFIX,habr.com
+DOMAIN-SUFFIX,pikabu.ru
+
+# --- Недвижимость и авто ---
+DOMAIN-SUFFIX,auto.ru
+DOMAIN-SUFFIX,drom.ru
+DOMAIN-SUFFIX,cian.ru
+DOMAIN-SUFFIX,domclick.ru
+DOMAIN-SUFFIX,avito.ru
+
+# --- Доставка еды и сервисы ---
+DOMAIN-SUFFIX,delivery-club.ru
+DOMAIN-SUFFIX,eda.yandex.ru
+DOMAIN-SUFFIX,samokat.ru
+DOMAIN-SUFFIX,lavka.yandex.ru
+DOMAIN-SUFFIX,youdo.com
+DOMAIN-SUFFIX,profi.ru
+
+# --- Платёжные системы ---
+DOMAIN-SUFFIX,qiwi.com
+DOMAIN-SUFFIX,mir-platform.ru
+DOMAIN-SUFFIX,nspk.ru
+DOMAIN-SUFFIX,sbp.nspk.ru
+
+# --- Образование ---
+DOMAIN-SUFFIX,skillbox.ru
+DOMAIN-SUFFIX,gb.ru
+DOMAIN-SUFFIX,geekbrains.ru
+DOMAIN-SUFFIX,netology.ru
+DOMAIN-SUFFIX,stepik.org
+
+# --- Yandex Tracker (исключение из блокировки трекеров) ---
+DOMAIN-SUFFIX,tracker.yandex.ru
+DOMAIN-SUFFIX,tracker.yandex.net
+DOMAIN-SUFFIX,tracker.yandex.com

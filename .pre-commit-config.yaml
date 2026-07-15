@@ -1,0 +1,8 @@
+# Барьер от случайного коммита секретов (ключей, IP, токенов).
+# Установка (один раз): pipx install pre-commit && pre-commit install
+# Проверить весь репо вручную: pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

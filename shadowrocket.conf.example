@@ -1,0 +1,119 @@
+# =====================================================================
+# ПРИМЕР конфига Shadowrocket с раздельным туннелированием.
+# Скопируй в свой .conf, подставь свои значения вместо ПЛЕЙСХОЛДЕРОВ.
+# Реальные IP/ключи здесь заменены на RFC5737 (198.51.100.x / 203.0.113.x / 192.0.2.x).
+#
+# Идея:
+#   - AI-домены (OpenAI/Google) -> сервер с "чистым" не-российским ASN (SERVER-CLEAN).
+#   - Остальной трафик -> группа Switch (переключаешь сервер вручную).
+#   - Apple/App Store, РФ-банки, РФ-домены -> напрямую (DIRECT).
+#   - Рабочие IP -> отдельный WireGuard-туннель (Work-WG).
+#
+# Узлы SERVER-CLEAN и SERVER-ALT добавляются в приложении по vless-ссылкам;
+# имена (текст после # в ссылке) должны ТОЧНО совпадать с именами в этом файле.
+# =====================================================================
+
+[General]
+bypass-system = true
+skip-proxy = 127.0.0.1, 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, 100.64.0.0/10, 169.254.0.0/16, localhost, *.local, *.crashlytics.com
+bypass-tun = 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16, 224.0.0.0/4, 255.255.255.255/32
+# ВАЖНО для РФ: публичные DoH Cloudflare/Google (1.1.1.1, 8.8.8.8) душатся ТСПУ.
+# Используй рабочий из РФ DoH (напр. comss.one) + локальный резолвер как резерв.
+dns-server = https://dns.comss.one/dns-query, 77.88.8.8
+# fallback НЕ на system: иначе при отказе основных DNS запросы утекают в DNS провайдера (цензура/спуфинг).
+fallback-dns-server = 77.88.8.8
+ipv6 = false
+prefer-ipv6 = false
+dns-direct-system = false
+icmp-auto-reply = true
+always-reject-url-rewrite = false
+private-ip-answer = true
+dns-direct-fallback-proxy = true
+udp-policy-not-supported-behaviour = REJECT
+
+[Proxy]
+# Опционально: отдельный WireGuard для рабочих/корпоративных IP. Подставь свои ключи и эндпоинт.
+Work-WG = wireguard, 192.0.2.1, 51820, privateKey=YOUR_WG_PRIVATE_KEY, publicKey=YOUR_WG_PUBLIC_KEY, presharedKey=YOUR_WG_PSK, ip=10.10.0.2, udp=1, dns=8.8.8.8, mtu=1420, keepalive=25
+
+[Proxy Group]
+# Ручной переключатель. В приложении появится группа "Switch" — тапом меняешь активный сервер.
+Switch = select, SERVER-CLEAN, SERVER-ALT
+
+[Rule]
+# === Защита от петель: IP самих VPN-серверов и WG-эндпоинта — напрямую ===
+IP-CIDR,198.51.100.10/32,DIRECT
+IP-CIDR,203.0.113.10/32,DIRECT
+IP-CIDR,192.0.2.1/32,DIRECT
+
+# === Локальные сети ===
+IP-CIDR,127.0.0.0/8,DIRECT
+IP-CIDR,192.168.0.0/16,DIRECT
+IP-CIDR,10.0.0.0/8,DIRECT
+IP-CIDR,172.16.0.0/12,DIRECT
+IP-CIDR,100.64.0.0/10,DIRECT
+IP-CIDR,169.254.0.0/16,DIRECT
+IP-CIDR,224.0.0.0/4,DIRECT
+IP-CIDR,255.255.255.255/32,DIRECT
+
+# === Заглушить QUIC/HTTP3 (UDP 443) -> откат на TCP -> доменные правила матчатся ===
+# Без этого QUIC-трафик Google утекает мимо доменных правил (SNI не виден в QUIC) и авторизация Google ломается.
+# ВАЖНО: ключевое слово DST-PORT (НЕ DEST-PORT!), иначе строка невалидна и SR обрывает разбор правил ниже.
+AND,((PROTOCOL,UDP),(DST-PORT,443)),REJECT-NO-DROP
+
+# === Apple / App Store — напрямую (до REJECT-списков) ===
+DOMAIN-SUFFIX,apple.com,DIRECT
+DOMAIN-SUFFIX,icloud.com,DIRECT
+DOMAIN-SUFFIX,icloud-content.com,DIRECT
+DOMAIN-SUFFIX,mzstatic.com,DIRECT
+DOMAIN-SUFFIX,cdn-apple.com,DIRECT
+DOMAIN-SUFFIX,apple-dns.net,DIRECT
+DOMAIN-SUFFIX,apple-cloudkit.com,DIRECT
+DOMAIN-SUFFIX,aaplimg.com,DIRECT
+
+# === ChatGPT / OpenAI — ЖЁСТКО через SERVER-CLEAN (нужен не-российский ASN) ===
+DOMAIN-SUFFIX,openai.com,SERVER-CLEAN
+DOMAIN-SUFFIX,chatgpt.com,SERVER-CLEAN
+DOMAIN-SUFFIX,oaistatic.com,SERVER-CLEAN
+DOMAIN-SUFFIX,oaiusercontent.com,SERVER-CLEAN
+
+# === Google (AI Studio / Gemini) — ЖЁСТКО через SERVER-CLEAN ===
+DOMAIN-SUFFIX,google.com,SERVER-CLEAN
+DOMAIN-SUFFIX,googleapis.com,SERVER-CLEAN
+DOMAIN-SUFFIX,gstatic.com,SERVER-CLEAN
+DOMAIN-SUFFIX,googleusercontent.com,SERVER-CLEAN
+DOMAIN-SUFFIX,ggpht.com,SERVER-CLEAN
+
+# === Капча/челлендж при входе в ChatGPT — тем же выходом, что и сессия ===
+DOMAIN-SUFFIX,arkoselabs.com,SERVER-CLEAN
+DOMAIN-SUFFIX,challenges.cloudflare.com,SERVER-CLEAN
+
+# === Рабочие IP — через встроенный WireGuard (подставь свои) ===
+# IP-CIDR,203.0.113.100/32,Work-WG
+# IP-CIDR,203.0.113.101/32,Work-WG
+
+# === РФ напрямую — ВЫШЕ REJECT-списков (first-match: иначе adblock отрежет банк по ложному срабатыванию) ===
+# Российские банки (реестр ЦБ РФ, автообновление)
+RULE-SET,https://raw.githubusercontent.com/misha-tgshv/shadowrocket-configuration-file/main/rules/domains_banking.list,DIRECT
+# IP-чекеры (должны показывать реальный РФ-IP)
+RULE-SET,https://raw.githubusercontent.com/misha-tgshv/shadowrocket-configuration-file/main/rules/domains_ipchecker.list,DIRECT
+
+# === Блокировка рекламы и трекеров (ПОСЛЕ РФ-белых списков) ===
+RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Shadowrocket/Advertising/Advertising.list,REJECT
+RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Shadowrocket/Privacy/Privacy.list,REJECT
+
+# === Свой список РФ-доменов напрямую ===
+# Вариант А: положи ru-direct.list рядом и раздавай по HTTP со своего сервера:
+# RULE-SET,http://YOUR_SERVER_IP:PORT/ru-direct.list,DIRECT
+# Вариант Б: впиши домены прямо здесь (DOMAIN-SUFFIX,example.ru,DIRECT).
+
+# === Российские ресурсы — GeoIP fallback ===
+GEOIP,RU,DIRECT
+
+# === Всё остальное — через переключаемую группу ===
+FINAL,Switch
+
+[URL Rewrite]
+^http://www\.google\.com https://www.google.com 302
+
+[MITM]
+enable = false
