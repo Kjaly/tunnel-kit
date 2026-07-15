@@ -203,6 +203,14 @@ systemctl restart sshd
 systemctl status sshd
 ```
 
+> ⚠️ **Ловушка cloud-init.** На облачных Ubuntu есть `/etc/ssh/sshd_config.d/50-cloud-init.conf` с `PasswordAuthentication yes`. Drop-in читается ДО главного конфига, а в sshd «первое значение выигрывает» — поэтому твой `PasswordAuthentication no` в главном файле может **молча не примениться** (пароли останутся включены!). Проверь фактическое значение и, если нужно, переопредели в drop-in, который сортируется первым:
+> ```bash
+> sshd -T | grep -i passwordauthentication      # должно быть 'no'
+> # если 'yes' — создай перебивающий drop-in (00- сортируется раньше 50-):
+> printf 'PasswordAuthentication no\nPubkeyAuthentication yes\n' > /etc/ssh/sshd_config.d/00-hardening.conf
+> sshd -t && systemctl reload ssh && sshd -T | grep -i passwordauthentication
+> ```
+
 **Что будет, если пропустить:**
 - PermitRootLogin yes → прямой доступ к root при компрометации ключа
 - Port 22 → 95% ботов сканируют именно его
@@ -376,17 +384,25 @@ export PUBLIC_KEY="z8mFQx_your_public_key_here"
 # Проверяем кандидатов:
 echo | openssl s_client -connect discord.com:443 -servername discord.com 2>/dev/null | grep "Protocol"
 
-# Хорошие варианты:
-# - www.speedtest.net (Ookla, Cloudflare)
-# - discord.com (Cloudflare)
-# - www.logitech.com (Akamai)
+# Требования к dest: TLS 1.3 + HTTP/2, НЕ за Cloudflare (ТСПУ троттлит Cloudflare),
+# и Reality должен уметь «одолжить» его хендшейк — TLS 1.3 сам по себе НЕ гарантия!
+#
+# Проверенные рабочие (не-Cloudflare):
+# - www.samsung.com
+# - dl.google.com
+# - addons.mozilla.org
+# - www.nvidia.com
+#
+# НЕ использовать:
+# - www.microsoft.com — отдаёт TLS 1.3, но Reality НЕ может одолжить хендшейк -> клиент падает в fallback
+# - *.cloudflare.com, discord.com, www.speedtest.net — за Cloudflare (троттлинг ТСПУ)
+# - google.com (корень) — слишком заметен; любые .ru — очевидно
 
-# Плохие:
-# - google.com (слишком известен для обфускации)
-# - любые .ru домены
+export DEST_DOMAIN="www.samsung.com"
 
-export DEST_DOMAIN="www.speedtest.net"
-export DEST_SERVER="104.18.24.167"  # IP speedtest.net
+# ⚠️ ПОСЛЕ настройки ОБЯЗАТЕЛЬНО проверь, что через сервер реально ходит трафик (а не только
+# проходит TLS-хендшейк): подними временный xray-клиент с этими параметрами и `curl ifconfig`
+# через него — должен вернуть IP ТВОЕГО сервера. Если пусто/чужой IP — dest не подошёл, меняй.
 ```
 
 #### 5.1.2. Конфигурация Xray
@@ -421,10 +437,10 @@ nano /usr/local/etc/xray/config.json
         "security": "reality",
         "realitySettings": {
           "show": false,
-          "dest": "www.speedtest.net:443",
+          "dest": "www.samsung.com:443",
           "xver": 0,
           "serverNames": [
-            "www.speedtest.net"
+            "www.samsung.com"
           ],
           "privateKey": "SLdQKqKW_your_private_key_here",
           "shortIds": [
@@ -481,7 +497,7 @@ nano /usr/local/etc/xray/config.json
 ```yaml
 port: 443 — стандартный HTTPS, не вызывает подозрений
 flow: xtls-rprx-vision — ускорение за счёт сплайсинга TCP
-dest: www.speedtest.net:443 — куда идёт "левый" трафик
+dest: www.samsung.com:443 — куда идёт "левый" трафик
 serverNames — список доменов, которые клиент может указывать
 privateKey — из xray x25519
 shortIds — обфускация; ГЕНЕРИРУЙ случайно (openssl rand -hex 8), НЕ копируй литерал и НЕ оставляй пустую строку (пустой sid пускает клиентов без идентификатора — слабее)
@@ -725,7 +741,7 @@ cat > ~/client-reality-vpnuser.json <<EOF
     "network": "tcp",
     "security": "reality",
     "realitySettings": {
-      "serverName": "www.speedtest.net",
+      "serverName": "www.samsung.com",
       "fingerprint": "chrome",
       "show": false,
       "publicKey": "z8mFQx_your_public_key_here",
@@ -829,7 +845,7 @@ Shadowrocket:
    - Port: 443
    - UUID: f8e7d9c2-1a3b-4f5e-8d7c-9b2a1e3f4d5c
    - TLS: включить
-   - Server Name: www.speedtest.net
+   - Server Name: www.samsung.com
    - Reality: включить
    - Public Key: z8mFQx_your_public_key_here
 4. Сохраняем и подключаемся
@@ -945,7 +961,7 @@ sudo nano /usr/local/etc/xray/client-config.json
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverName": "www.speedtest.net",
+          "serverName": "www.samsung.com",
           "fingerprint": "chrome",
           "show": false,
           "publicKey": "z8mFQx_your_public_key_here",
