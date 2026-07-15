@@ -416,9 +416,27 @@ echo | openssl s_client -connect discord.com:443 -servername discord.com 2>/dev/
 export DEST_DOMAIN="www.samsung.com"
 
 # ⚠️ ПОСЛЕ настройки ОБЯЗАТЕЛЬНО проверь, что через сервер реально ходит трафик (а не только
-# проходит TLS-хендшейк): подними временный xray-клиент с этими параметрами и `curl ifconfig`
-# через него — должен вернуть IP ТВОЕГО сервера. Если пусто/чужой IP — dest не подошёл, меняй.
+# проходит TLS-хендшейк) — процедура ниже. Если пусто/чужой IP — dest не подошёл, меняй.
 ```
+
+**Быстрая проверка туннеля (с любой машины с установленным xray):**
+```bash
+# подставь свои IP/UUID/pbk/sni/sid; ВАЖНО: .json-расширение (иначе xray не поймёт формат)
+cat > /tmp/probe.json <<'EOF'
+{ "inbounds":[{"port":10808,"listen":"127.0.0.1","protocol":"socks","settings":{"udp":false}}],
+  "outbounds":[{ "protocol":"vless",
+    "settings":{"vnext":[{"address":"YOUR_SERVER_IP","port":443,
+      "users":[{"id":"YOUR_UUID","flow":"xtls-rprx-vision","encryption":"none"}]}]},
+    "streamSettings":{"network":"tcp","security":"reality",
+      "realitySettings":{"serverName":"www.samsung.com","fingerprint":"chrome",
+        "publicKey":"YOUR_PUBLIC_KEY","shortId":"YOUR_SHORT_ID"}} }] }
+EOF
+xray -c /tmp/probe.json & sleep 3
+curl -s --socks5-hostname 127.0.0.1:10808 https://ifconfig.me   # -> должен вернуть IP твоего сервера
+kill %1; rm /tmp/probe.json
+```
+> `streamSettings` — ВНУТРИ outbound (не отдельным элементом массива!), иначе Reality не применится.
+> Готовый постоянный кросс-серверный вариант — `scripts/tunnel-check.sh` в [optional-enhancements.md](optional-enhancements.md).
 
 #### 5.1.2. Конфигурация Xray
 
@@ -1084,7 +1102,10 @@ cat > /usr/local/bin/traffic-limit.sh <<'EOF'
 
 USER_IP="CLIENT_IP_HERE"
 LIMIT_GB=100
-CURRENT_GB=$(vnstat -i eth0 --json | jq '.interfaces[0].traffic.month[0].tx' | awk '{print $1/1024/1024/1024}')
+# интерфейс — динамически (не хардкодь eth0); month[-1] = ТЕКУЩИЙ месяц (массив по возрастанию даты);
+# в vnStat 2.x значения уже в байтах:
+IFACE=$(ip route show default | awk '{print $5; exit}')
+CURRENT_GB=$(vnstat -i "$IFACE" --json | jq '.interfaces[0].traffic.month[-1].tx' | awk '{print $1/1024/1024/1024}')
 
 if (( $(echo "$CURRENT_GB > $LIMIT_GB" | bc -l) )); then
     iptables -I FORWARD -s $USER_IP -j DROP
@@ -1225,19 +1246,21 @@ tail -f /var/log/xray/error.log
 # Создаём скрипт бэкапа
 cat > /usr/local/bin/xray-backup.sh <<'EOF'
 #!/bin/bash
-BACKUP_DIR="/root/xray-backups"
+# Бэкап в домашний каталог vpnuser, чтобы его можно было скачать (в /root доступа нет: 700 + root-SSH off)
+BACKUP_DIR="/home/vpnuser/backups"
 DATE=$(date +%Y%m%d-%H%M%S)
 
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Бэкапим конфиги
-tar -czf $BACKUP_DIR/xray-config-$DATE.tar.gz \
+# Архив с секретами -> права 600
+tar -czf "$BACKUP_DIR/xray-config-$DATE.tar.gz" \
     /usr/local/etc/xray/ \
-    /etc/nginx/sites-available/xray-fallback \
-    /etc/letsencrypt/
+    /etc/letsencrypt/ 2>/dev/null
+chmod 600 "$BACKUP_DIR/xray-config-$DATE.tar.gz"
+chown -R vpnuser:vpnuser "$BACKUP_DIR"
 
 # Удаляем старые (>30 дней)
-find $BACKUP_DIR -name "*.tar.gz" -mtime +30 -delete
+find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
 
 echo "Backup created: xray-config-$DATE.tar.gz"
 EOF
@@ -1247,8 +1270,8 @@ chmod +x /usr/local/bin/xray-backup.sh
 # Запускаем еженедельно (воскресенье 3:00)
 ( crontab -l 2>/dev/null | grep -v xray-backup.sh; echo "0 3 * * 0 /usr/local/bin/xray-backup.sh" ) | crontab -
 
-# Скачиваем на локальную машину
-scp -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP:/root/xray-backups/xray-config-*.tar.gz ~/backups/
+# Скачиваем на локальную машину (архив с приватными ключами — храни надёжно)
+scp -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP:/home/vpnuser/backups/xray-config-*.tar.gz ~/backups/
 ```
 
 ### 8.6. Мониторинг производительности
@@ -1531,8 +1554,10 @@ ufw limit 443/tcp
 iptables -A INPUT -p tcp --dport 443 -m state --state NEW -m recent --set
 iptables -A INPUT -p tcp --dport 443 -m state --state NEW -m recent --update --seconds 60 --hitcount 20 -j DROP
 
-# Сохраняем правила
-iptables-save > /etc/iptables/rules.v4
+# Сохраняем правила (каталог /etc/iptables создаёт пакет iptables-persistent)
+apt install -y iptables-persistent    # спросит про сохранение текущих правил
+netfilter-persistent save
+# (на ufw-хосте предпочтительно вести правила через ufw, а не смешивать с ручным iptables)
 ```
 
 ### 9.8. "Certificate error" (для WebSocket-схемы)
@@ -1654,6 +1679,8 @@ source ~/.bashrc
 ---
 
 ## 12. Cloud-init скрипт
+
+> ⚠️ Это **АЛЬТЕРНАТИВА** ручным разделам 2–3 (автоматизирует базовую настройку при создании VPS), **а не дополнение**. НЕ применяй cloud-init и ручной хардненинг вместе — двойное применение (напр. `ufw --force reset` из раздела 3.6 поверх cloud-init) ломает доступ. Выбери один путь. Cloud-init намеренно оставляет SSH на порту 22.
 
 **Для автоматизации начальной настройки при создании VPS:**
 
