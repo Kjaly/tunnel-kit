@@ -1,10 +1,8 @@
 # Развёртывание VPN-сервера на Xray Core (VLESS + Reality)
 
-> ⚠️ **Это generic-инструкция по развёртыванию с нуля.** Актуальное боевое состояние (какие серверы работают сейчас, их ключи, логика маршрутизации, что уже настроено) — в [vpn-credentials.md](vpn-credentials.md).
+> ⚠️ **Хостер решает всё.** Для ChatGPT/Google бери **не-российский** ASN (DigitalOcean, Vultr, Contabo, OVH). Российский хостер (напр. Timeweb, AS210976) даёт `unsupported_country` даже при амстердамской локации — его IP помечен как RU в геобазе OpenAI. См. §9.9.
 >
-> **Важно (2026-07):** для ChatGPT/Google хостер должен быть с нероссийским ASN. Timeweb (AS210976) даёт `unsupported_country` даже при амстердамской локации, т.к. его IP помечен как RU в геобазе OpenAI. Основной рабочий сервер сейчас — DigitalOcean Amsterdam. Подробности и причина — в [vpn-credentials.md](vpn-credentials.md).
->
-> **Две модели доступа — не смешивай.** Этот гайд ведёт к строгому варианту: отдельный пользователь `vpnuser`, root-вход запрещён (смена SSH-порта — опциональна, см. §3.4). Автоматический сценарий ([ai-setup-prompt.md](ai-setup-prompt.md)) работает проще — `root` по ключу на порту `22`. Выбери ОДИН путь. Если запускал агента из промпта, НЕ применяй потом cloud-init/хардненинг из этого гайда поверх — иначе рискуешь потерять SSH-доступ.
+> **Две модели доступа — не смешивай.** Этот гайд ведёт к строгому варианту: отдельный пользователь `vpnuser`, root-вход запрещён (смена SSH-порта — опциональна, см. §3.4). Автоматический сценарий ([ai-setup-prompt.md](ai-setup-prompt.md)) проще — `root` по ключу на порту `22`. Выбери ОДИН путь; не применяй cloud-init/хардненинг отсюда поверх результата промпта — рискуешь потерять SSH.
 
 ## Содержание
 
@@ -328,15 +326,16 @@ sysctl -n net.ipv4.tcp_congestion_control   # -> bbr
 
 ```bash
 # Скачиваем официальный скрипт установки
+# supply-chain: можно закрепить версию '... @ install --version <тег>' и/или свериться с релизами XTLS/Xray-core
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
 # Проверяем версию
 xray version
 ```
 
-**Вывод должен быть:**
+**Вывод — актуальная версия (установщик ставит свежую, напр. 26.x):**
 ```
-Xray 1.8.x (Xray, Penetrates Everything.) Custom (go1.21.x linux/amd64)
+Xray <версия> (Xray, Penetrates Everything.) ... linux/amd64
 ```
 
 ```bash
@@ -365,9 +364,12 @@ export USER_UUID="f8e7d9c2-1a3b-4f5e-8d7c-9b2a1e3f4d5c"
 # Генерируем ключи для Reality (запиши оба!)
 xray x25519
 
-# Вывод:
-# Private key: SLdQKqKW_your_private_key_here
-# Public key: z8mFQx_your_public_key_here
+# Вывод (в свежих сборках метки такие):
+# PrivateKey: SLdQKqKW_your_private_key_here     <- в config.json сервера (realitySettings.privateKey)
+# Password:   z8mFQx_your_public_key_here        <- это ПУБЛИЧНЫЙ ключ (pbk) в клиентские ссылки
+
+# Дополнительно сгенерируй shortId (одно значение — в сервер и клиент):
+openssl rand -hex 8
 
 export PRIVATE_KEY="SLdQKqKW_your_private_key_here"
 export PUBLIC_KEY="z8mFQx_your_public_key_here"
@@ -935,8 +937,9 @@ Streisand:
 Клиент: Qv2ray + Xray-core
 Установка (Ubuntu/Debian):
 
-# Скачиваем Xray-core
-wget https://github.com/XTLS/Xray-core/releases/download/v1.8.x/Xray-linux-64.zip
+# Скачиваем последний Xray-core (не хардкодь версию):
+XVER=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r .tag_name)
+wget "https://github.com/XTLS/Xray-core/releases/download/${XVER}/Xray-linux-64.zip"
 unzip Xray-linux-64.zip -d ~/.config/qv2ray/
 
 # Скачиваем Qv2ray
@@ -1139,6 +1142,16 @@ systemctl restart xray
 **Почему это важно:**
 - Компрометация ключа → доступ для третьих лиц
 - Рекомендуется ротация раз в 3-6 месяцев
+
+### 7.4. Отзыв одного пользователя (утекла его ссылка)
+
+Ротация Reality-пары (7.3) отключает ВСЕХ сразу. Чтобы отрезать одного клиента, у которого свой UUID — удали его объект из массива `clients`:
+```bash
+# в /usr/local/etc/xray/config.json -> inbounds[0].settings.clients
+# удали объект с нужным "id" (UUID), затем:
+xray -test -config /usr/local/etc/xray/config.json && systemctl restart xray
+```
+> Это работает, только если у каждого пользователя СВОЙ UUID (см. §7.1). Если UUID общий — поможет лишь ротация ключей.
 
 ---
 
@@ -1455,9 +1468,10 @@ curl -x socks5://ДРУГОЙ_VPN https://YOUR_SERVER_IP
 **Решение:**
 
 ```bash
-# 1. Меняем IP-адрес (через панель Timeweb Cloud)
+# 1. ОСНОВНОЙ путь: пересоздать сервер / сменить IP (у хостера с почасовой оплатой — быстро и дёшево)
 # Или
-# 2. Используем CDN (Cloudflare) + WebSocket
+# 2. CDN (Cloudflare) + WebSocket — даёт устойчивость к бану IP, НО: ТСПУ троттлит Cloudflare
+#    (см. предупреждения в §5.1.1/README) и это WebSocket-схема (5.2, сложнее). Компромисс, не дефолт.
 
 # Настройка через Cloudflare:
 # - Заводим домен на Cloudflare
@@ -1481,8 +1495,8 @@ curl -x socks5://ДРУГОЙ_VPN https://YOUR_SERVER_IP
 xray x25519
 
 # Копируем:
-# Private key: ... → в config.json на сервере (privateKey)
-# Public key: ... → в клиентские конфиги (publicKey)
+# PrivateKey: ... → в config.json на сервере (realitySettings.privateKey)
+# Password:   ... → ПУБЛИЧНЫЙ ключ (pbk) в клиентские конфиги/ссылки
 
 # Проверяем, что UUID совпадает
 grep '"id"' /usr/local/etc/xray/config.json
@@ -1652,7 +1666,10 @@ xray x25519 -i "<privateKey из config.json>"   # -> Password(PublicKey) == pbk
 ✅ Логи пишутся (/var/log/xray/error.log)
 ✅ Клиент подключается (проверка на телефоне)
 ✅ Скорость > 50 Mbps (speedtest через VPN)
-✅ IP сменился (curl ifconfig.me через VPN)
+✅ IP сменился (curl ifconfig.me через VPN → IP сервера)
+✅ Туннель реально работает, не fallback (проверка из §5.1.1: curl через socks → IP сервера)
+✅ AI-ветка: ChatGPT/aistudio открываются без unsupported_country
+✅ DIRECT-ветка: РФ ip-checker показывает реальный домашний РФ-IP (раздельное туннелирование работает)
 ✅ DNS работает (ping google.com через VPN)
 ✅ Бэкап настроен (crontab -l | grep backup)
 ✅ Мониторинг активен (crontab -l | grep healthcheck)
