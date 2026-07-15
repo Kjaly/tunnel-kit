@@ -540,7 +540,7 @@ tail -f /var/log/xray/error.log
 Регистратор: Namecheap, Porkbun, Google Domains
 Зона: .com, .net, .org (НЕ .ru, .рф)
 Имя: случайное, не связанное с VPN
-Пример: digital-portfolio-vpnuser.com
+Пример: example.com
 
 DNS-записи:
 A — YOUR_SERVER_IP
@@ -557,11 +557,11 @@ apt install -y nginx certbot python3-certbot-nginx
 systemctl stop nginx
 
 # Получаем сертификат
-certbot certonly --standalone -d digital-portfolio-vpnuser.com --agree-tos -m твой_email@example.com
+certbot certonly --standalone -d example.com --agree-tos -m твой_email@example.com
 
 # Сертификаты здесь:
-# /etc/letsencrypt/live/digital-portfolio-vpnuser.com/fullchain.pem
-# /etc/letsencrypt/live/digital-portfolio-vpnuser.com/privkey.pem
+# /etc/letsencrypt/live/example.com/fullchain.pem
+# /etc/letsencrypt/live/example.com/privkey.pem
 
 # Автообновление
 systemctl enable certbot.timer
@@ -576,16 +576,16 @@ nano /etc/nginx/sites-available/xray-fallback
 ```nginx
 server {
     listen 80;
-    server_name digital-portfolio-vpnuser.com;
+    server_name example.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name digital-portfolio-vpnuser.com;
+    server_name example.com;
 
-    ssl_certificate /etc/letsencrypt/live/digital-portfolio-vpnuser.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/digital-portfolio-vpnuser.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
