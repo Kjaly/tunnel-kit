@@ -10,6 +10,7 @@
 set -u
 
 # ── настрой под себя ────────────────────────────────────────────────
+SERVER_LABEL="MY-VPN"               # понятное имя сервера для алертов (напр. DO-AMS)
 SERVER_IP="YOUR_SERVER_IP"          # публичный IP сервера
 SUB_PORT="8443"                     # порт подписки (если поднимал subscription-сервер; иначе не важно)
 # ────────────────────────────────────────────────────────────────────
@@ -71,8 +72,8 @@ if [ -f "$ALERT_CONF" ]; then
   . "$ALERT_CONF"
   send() { curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="$1" >/dev/null 2>&1; }
   if [ "$status" = "BAD" ] && [ "$prev" != "BAD" ]; then
-    send "🔴 VPN $SERVER_IP: $msg"
+    send "🔴 [$SERVER_LABEL] $SERVER_IP: $msg"
   elif [ "$status" = "OK" ] && [ "$prev" = "BAD" ]; then
-    send "🟢 VPN $SERVER_IP восстановлен (exit=$exit_ip, loc=$loc)"
+    send "🟢 [$SERVER_LABEL] $SERVER_IP восстановлен (exit=$exit_ip, loc=$loc)"
   fi
 fi
