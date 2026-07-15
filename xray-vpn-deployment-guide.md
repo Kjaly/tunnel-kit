@@ -753,7 +753,7 @@ cat > ~/client-reality-vpnuser.json <<EOF
 EOF
 ```
 
-### 6.2. Конвертация в share-ссылки
+> Это **источник данных** для генерации vless-ссылки/QR ниже и для импорта в GUI-клиенты — НЕ готовый к `xray -c` конфиг. Чтобы запустить xray-клиентом (напр. для теста), нужен полный конфиг с `inbounds` (socks) и `outbounds`, где `streamSettings` лежит **ВНУТРИ** outbound-объекта (частая ошибка — вынести его отдельным элементом; тогда Reality не применяется и хендшейк «не наш»).
 
 ```bash
 # Для Reality ссылка сложная, используем Python-скрипт
@@ -786,7 +786,7 @@ params = {
 }
 
 params_str = '&'.join([f"{k}={urllib.parse.quote(v)}" for k, v in params.items()])
-link = f"vless://{uuid}@{address}:{port}?{params_str}#Anton-Reality-VPN"
+link = f"vless://{uuid}@{address}:{port}?{params_str}#MyReality-VPN"
 
 print(link)
 EOF
@@ -1172,6 +1172,8 @@ chmod +x /usr/local/bin/xray-healthcheck.sh
 echo "*/5 * * * * /usr/local/bin/xray-healthcheck.sh" | crontab -
 ```
 
+> 💡 Готовый health-check с авто-восстановлением, кросс-серверной проверкой туннеля и Telegram-алертами — в [optional-enhancements.md](optional-enhancements.md) (`scripts/vpn-healthcheck.sh`, `scripts/tunnel-check.sh`). Он умнее этого мини-скрипта: ловит не только «сервис упал», но и «сервис жив, а туннель мёртв».
+
 ### 8.4. Обновления Xray
 
 ```bash
@@ -1535,10 +1537,44 @@ systemctl enable certbot.timer
 systemctl start certbot.timer
 
 # Проверяем срок сертификата
-openssl x509 -in /etc/letsencrypt/live/digital-portfolio-vpnuser.com/fullchain.pem -noout -dates
+openssl x509 -in /etc/letsencrypt/live/example.com/fullchain.pem -noout -dates
 
 # Должен быть валиден ещё 60+ дней
 ```
+
+### 9.9. ChatGPT/Google: `unsupported_country` или "Сервисы недоступны в вашей стране"
+
+**Симптомы:** VPN подключается, обычные сайты открываются, но ChatGPT/Gemini/AI Studio пишут `error_code: unsupported_country`, при том что IP-чекер показывает нужную страну (напр. NL).
+
+**Причина:** OpenAI/Google определяют страну по **ASN/геобазе**, а не по карте. IP российского хостера (даже с сервером в ЕС) помечен как RU — это НЕ чинится настройкой сервера.
+
+**Решение:**
+```bash
+# Проверь, как OpenAI видит твой сервер (форс IPv4):
+curl -4 -s https://chatgpt.com/cdn-cgi/trace | grep -E "^(ip|loc)="
+curl -4 -s https://ipinfo.io/json | grep -E '"(country|org)"'
+```
+- `org` — российский хостер (Timeweb, aeza, vdsina и т.п.) → **смени хостера** на не-российского (DigitalOcean, Vultr, Contabo, OVH).
+- Убедись, что выход идёт по IPv4 (`freedom.domainStrategy=UseIPv4`) — иначе может утечь на IPv6 из RU-диапазона.
+- Хостеры с почасовой оплатой: если конкретный IP в блок-листе — пересоздай сервер, получишь новый IP.
+
+### 9.10. Клиент не подключается, в логе "REALITY: processed invalid connection ... handshake did not complete"
+
+**Симптомы:** TCP до сервера проходит (`nc` открыт), но туннеля нет; в `error.log` сервера — `REALITY: processed invalid connection ... handshake did not complete successfully`; клиент как будто попадает на настоящий сайт-`dest`.
+
+**Причина:** выбранный `dest`/`serverName` **не годится для Reality** — сервер не может «одолжить» его TLS-хендшейк, и Reality сваливает соединение на настоящий сайт (fallback). TLS 1.3 у dest сам по себе НЕ гарантия! (Классика — `www.microsoft.com`: отдаёт TLS 1.3, но Reality с ним ломается.)
+
+**Решение:**
+```bash
+# 1. Смени dest на проверенный не-Cloudflare (samsung/google/mozilla):
+#    в config.json -> realitySettings.dest и serverNames
+# 2. Проверь ключи: publicKey клиента должен деривиться из privateKey сервера:
+xray x25519 -i "<privateKey из config.json>"   # -> Password(PublicKey) == pbk в ссылке
+# 3. ОБЯЗАТЕЛЬНО проверь реальным клиентом (не только TLS):
+#    подними временный xray-клиент с этими параметрами и curl ifconfig через socks —
+#    должен вернуть IP твоего сервера. Пусто/чужой IP -> dest не подошёл, меняй.
+```
+Проверенные dest: `www.samsung.com`, `dl.google.com`, `addons.mozilla.org`. Избегай `www.microsoft.com` и всего за Cloudflare.
 
 ---
 
