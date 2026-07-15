@@ -1,12 +1,7 @@
 #!/bin/bash
-# Health-check + авто-восстановление VPN. Запускается systemd-таймером каждые 5 мин.
-# Проверяет: xray, (опц.) caddy-подписку, исходящий интернет, регион OpenAI.
-# При проблеме — авто-рестарт сервиса + (опц.) Telegram-алерт при смене статуса.
-#
-# Установка:
-#   1) впиши SERVER_IP ниже
-#   2) sudo cp scripts/vpn-healthcheck.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/vpn-healthcheck.sh
-#   3) заведи systemd service+timer (см. optional-enhancements.md)
+# Health-check + авто-восстановление VPN. systemd-таймер каждые 5 мин.
+# Проверяет xray (и подписку/caddy, если есть), исходящий интернет, регион OpenAI.
+# Авто-рестарт сервиса. Telegram-алерты 3 уровней: 🟢 ок · 🟡 авто-починка · 🔴 критично.
 set -u
 
 # ── настрой под себя ────────────────────────────────────────────────
@@ -17,33 +12,33 @@ SUB_PORT="8443"                     # порт подписки (если под
 
 LOG=/var/log/vpn-health.log
 STATE=/run/vpn-health.state
-ALERT_CONF=/root/vpn-alert.conf     # опционально: BOT_TOKEN=... / CHAT_ID=...
-SUB_SECRET=$(cat /root/sub-secret.txt 2>/dev/null)   # если есть subscription-сервер
+ALERT_CONF=/root/vpn-alert.conf
+SUB_SECRET=$(cat /root/sub-secret.txt 2>/dev/null)
 SSLIP="${SERVER_IP}.sslip.io"
 
 ts() { date "+%Y-%m-%d %H:%M:%S"; }
+now() { date "+%d.%m %H:%M"; }
 log() { echo "$(ts) $1" >> "$LOG"; }
-problems=()
+flag() { case "$1" in NL) echo 🇳🇱;; RU) echo 🇷🇺;; DE) echo 🇩🇪;; FI) echo 🇫🇮;; US) echo 🇺🇸;; GB) echo 🇬🇧;; FR) echo 🇫🇷;; NL) echo 🇳🇱;; "") echo 🌍;; *) echo "🌍 $1";; esac; }
+
+problems=(); crit=0; warn=0
 
 # 1. xray активен и слушает 443
 if ! systemctl is-active --quiet xray || ! ss -tln | grep -q ':443 '; then
   systemctl restart xray; sleep 2
   if systemctl is-active --quiet xray && ss -tln | grep -q ':443 '; then
-    problems+=("xray был не в порядке -> перезапущен (ОК)")
+    warn=1; problems+=("xray был недоступен → перезапущен, снова работает")
   else
-    problems+=("xray НЕ поднимается после рестарта")
+    crit=1; problems+=("xray НЕ поднимается после рестарта — нужна ручная проверка")
   fi
 fi
 
-# 2. (опц.) caddy + подписка отдаётся
+# 2. (опц.) caddy + подписка
 if systemctl list-unit-files caddy.service >/dev/null 2>&1; then
-  if ! systemctl is-active --quiet caddy; then
-    systemctl restart caddy; sleep 2
-    problems+=("caddy был down -> перезапущен")
-  fi
+  if ! systemctl is-active --quiet caddy; then systemctl restart caddy; sleep 2; warn=1; problems+=("caddy был down → перезапущен"); fi
   if [ -n "$SUB_SECRET" ]; then
     code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 8 --resolve "$SSLIP:$SUB_PORT:127.0.0.1" "https://$SSLIP:$SUB_PORT/$SUB_SECRET/nodes")
-    [ "$code" != "200" ] && problems+=("подписка не отдаётся (код $code)")
+    [ "$code" != "200" ] && { warn=1; problems+=("подписка не отдаётся (код $code)"); }
   fi
 fi
 
@@ -51,29 +46,36 @@ fi
 exit_ip=$(curl -4 -s --max-time 10 https://ifconfig.me)
 loc=""
 if [ -z "$exit_ip" ]; then
-  problems+=("нет исходящего интернета")
+  crit=1; problems+=("нет исходящего интернета")
 else
   loc=$(curl -4 -s --max-time 10 https://chatgpt.com/cdn-cgi/trace | grep "^loc=" | cut -d= -f2 | tr -d "\r")
-  [ "$loc" = "RU" ] && problems+=("!!! OpenAI видит регион RU (IP испортился) — нужен новый IP/сервер")
+  [ "$loc" = "RU" ] && { crit=1; problems+=("OpenAI видит регион RU — нужен новый IP/сервер"); }
 fi
 
-# статус + лог
-if [ ${#problems[@]} -eq 0 ]; then
-  status=OK; msg=""; log "OK (exit=$exit_ip loc=${loc:-?})"
-else
-  status=BAD; msg=$(printf '%s; ' "${problems[@]}"); log "BAD: $msg(exit=${exit_ip:-none} loc=${loc:-?})"
-fi
+# уровень
+if [ "$crit" = 1 ]; then sev=crit; elif [ "$warn" = 1 ]; then sev=warn; else sev=ok; fi
+detail=$(printf '%s; ' "${problems[@]}")
+log "${sev^^} ${detail}(exit=${exit_ip:-none} loc=${loc:-?})"
 
-# алерт при смене статуса OK<->BAD
-prev=$(cat "$STATE" 2>/dev/null || echo OK)
-echo "$status" > "$STATE"
+FL=$(flag "$loc")
+prev=$(cat "$STATE" 2>/dev/null || echo ok); echo "$sev" > "$STATE"
 if [ -f "$ALERT_CONF" ]; then
   # shellcheck disable=SC1090
   . "$ALERT_CONF"
-  send() { curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="$1" >/dev/null 2>&1; }
-  if [ "$status" = "BAD" ] && [ "$prev" != "BAD" ]; then
-    send "🔴 [$SERVER_LABEL] $SERVER_IP: $msg"
-  elif [ "$status" = "OK" ] && [ "$prev" = "BAD" ]; then
-    send "🟢 [$SERVER_LABEL] $SERVER_IP восстановлен (exit=$exit_ip, loc=$loc)"
+  send() { curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d parse_mode=HTML --data-urlencode "text=$1" >/dev/null 2>&1; }
+  if [ "$sev" = "crit" ] && [ "$prev" != "crit" ]; then
+    send "🔴 <b>СБОЙ · ${SERVER_LABEL}</b>
+🖥 <code>${SERVER_IP}</code> · ${FL}
+<blockquote>${detail}</blockquote>
+🕐 $(now)"
+  elif [ "$sev" = "warn" ] && [ "$prev" = "ok" ]; then
+    send "🟡 <b>Авто-починка · ${SERVER_LABEL}</b>
+🖥 <code>${SERVER_IP}</code> · ${FL}
+<blockquote>${detail}</blockquote>
+🕐 $(now)"
+  elif [ "$sev" != "crit" ] && [ "$prev" = "crit" ]; then
+    send "🟢 <b>Восстановлен · ${SERVER_LABEL}</b>
+🖥 <code>${SERVER_IP}</code> · ${FL}
+🕐 $(now)"
   fi
 fi

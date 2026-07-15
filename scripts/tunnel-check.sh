@@ -43,14 +43,20 @@ kill "$XPID" 2>/dev/null; rm -f "$CFG"
 if [ "$GOT" = "$PEER_IP" ]; then status=OK; else status=BAD; fi
 echo "$(ts) $status (peer=$PEER_LABEL got=${GOT:-none} want=$PEER_IP)" >> "$LOG"
 
+now(){ date "+%d.%m %H:%M"; }
 prev=$(cat "$STATE" 2>/dev/null || echo OK); echo "$status" > "$STATE"
 if [ -f "$ALERT_CONF" ]; then
   # shellcheck disable=SC1090
   . "$ALERT_CONF"
-  send(){ curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="$1" >/dev/null 2>&1; }
+  send(){ curl -s --max-time 10 "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d parse_mode=HTML --data-urlencode "text=$1" >/dev/null 2>&1; }
   if [ "$status" = "BAD" ] && [ "$prev" != "BAD" ]; then
-    send "🔴 Туннель до [$PEER_LABEL] $PEER_IP НЕ работает (проверка с $SELF_LABEL). Похоже сломан Reality/dest на $PEER_LABEL."
+    send "🔴 <b>Туннель мёртв · ${PEER_LABEL}</b>
+🔗 проверка с <b>${SELF_LABEL}</b> → <code>${PEER_IP}</code>
+<blockquote>Не тоннелируется через ${PEER_LABEL} — вероятно сломан Reality/dest</blockquote>
+🕐 $(now)"
   elif [ "$status" = "OK" ] && [ "$prev" = "BAD" ]; then
-    send "🟢 Туннель до [$PEER_LABEL] $PEER_IP восстановлен (проверка с $SELF_LABEL)."
+    send "🟢 <b>Туннель восстановлен · ${PEER_LABEL}</b>
+🔗 проверка с <b>${SELF_LABEL}</b>
+🕐 $(now)"
   fi
 fi
