@@ -4,7 +4,7 @@
 >
 > **Важно (2026-07):** для ChatGPT/Google хостер должен быть с нероссийским ASN. Timeweb (AS210976) даёт `unsupported_country` даже при амстердамской локации, т.к. его IP помечен как RU в геобазе OpenAI. Основной рабочий сервер сейчас — DigitalOcean Amsterdam. Подробности и причина — в [vpn-credentials.md](vpn-credentials.md).
 >
-> **Две модели доступа — не смешивай.** Этот гайд ведёт к строгому варианту: отдельный пользователь `vpnuser`, SSH-порт `2222`, root-вход запрещён. Автоматический сценарий ([ai-setup-prompt.md](ai-setup-prompt.md)) работает проще — `root` по ключу на порту `22`. Выбери ОДИН путь. Если запускал агента из промпта, НЕ применяй потом cloud-init/хардненинг из этого гайда поверх — иначе рискуешь потерять SSH-доступ.
+> **Две модели доступа — не смешивай.** Этот гайд ведёт к строгому варианту: отдельный пользователь `vpnuser`, root-вход запрещён (смена SSH-порта — опциональна, см. §3.4). Автоматический сценарий ([ai-setup-prompt.md](ai-setup-prompt.md)) работает проще — `root` по ключу на порту `22`. Выбери ОДИН путь. Если запускал агента из промпта, НЕ применяй потом cloud-init/хардненинг из этого гайда поверх — иначе рискуешь потерять SSH-доступ.
 
 ## Содержание
 
@@ -67,8 +67,8 @@
 Конфигурация:
 - ОС: Ubuntu 24.04 LTS
 - Тариф: Cloud 1 (1 vCore, 1 GB RAM, 15 GB SSD)
-- IP: выделенный IPv4 (обязательно) — 180₽/мес
-- IPv6: включить (если доступно) — бесплатно
+- IP: выделенный IPv4 (обязательно)
+- IPv6: НЕ включать (или не использовать для выхода) — иначе AI-сервисы могут увидеть IPv6 из RU-диапазона и дать `unsupported_country`; конфиг форсит выход по IPv4
 ```
 
 ### 2.2. SSH-доступ (на этапе создания)
@@ -181,27 +181,31 @@ PubkeyAuthentication yes
 # Отключаем пустые пароли
 PermitEmptyPasswords no
 
-# Меняем порт (опционально, усложняет сканирование)
-Port 2222
-
 # Только конкретный пользователь
 AllowUsers vpnuser
-
-# Протокол 2 (старый убираем)
-Protocol 2
 
 # Ограничение попыток аутентификации
 MaxAuthTries 3
 MaxSessions 2
 ```
 
-```bash
-# Применяем
-systemctl restart sshd
+> ℹ️ Смену SSH-порта НЕ добавляем в главный файл: на Ubuntu 24.04 sshd **socket-activated**, и `Port` в `sshd_config` игнорируется — порт держит `ssh.socket`. Правильный способ — во врезке ниже. Юнит на Ubuntu называется **`ssh`**, не `sshd`.
 
-# Проверяем статус
-systemctl status sshd
+```bash
+# Применяем (юнит называется ssh, не sshd)
+sshd -t && systemctl reload ssh
+
+# Проверяем эффективный конфиг
+sshd -T | grep -iE "permitrootlogin|passwordauthentication|allowusers"
 ```
+
+> 🔒 **Смена порта на Ubuntu 24.04 (опционально, socket-activated sshd):**
+> ```bash
+> mkdir -p /etc/systemd/system/ssh.socket.d
+> printf '[Socket]\nListenStream=\nListenStream=2222\n' > /etc/systemd/system/ssh.socket.d/port.conf
+> systemctl daemon-reload && systemctl restart ssh.socket
+> ```
+> ⚠️ **НЕ закрывай порт 22 в UFW (§3.6), пока новый порт не подтверждён ОТДЕЛЬНОЙ SSH-сессией.** Сначала `ufw allow 2222/tcp`, проверь вход, и только потом убирай 22. Иначе — лок-аут.
 
 > ⚠️ **Ловушка cloud-init.** На облачных Ubuntu есть `/etc/ssh/sshd_config.d/50-cloud-init.conf` с `PasswordAuthentication yes`. Drop-in читается ДО главного конфига, а в sshd «первое значение выигрывает» — поэтому твой `PasswordAuthentication no` в главном файле может **молча не примениться** (пароли останутся включены!). Проверь фактическое значение и, если нужно, переопредели в drop-in, который сортируется первым:
 > ```bash
@@ -236,8 +240,9 @@ action = %(action_mwl)s
 
 [sshd]
 enabled = true
-port = 2222
+port = 22
 logpath = /var/log/auth.log
+# если менял SSH-порт — укажи свой (напр. 2222)
 ```
 
 ```bash
@@ -259,8 +264,8 @@ ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
 
-# Разрешаем SSH (используй свой порт!)
-ufw allow 2222/tcp comment 'SSH'
+# Разрешаем SSH (22 по умолчанию; если менял порт — свой, и НЕ убирай 22 пока новый не подтверждён)
+ufw allow 22/tcp comment 'SSH'
 
 # Разрешаем HTTP/HTTPS
 ufw allow 80/tcp comment 'HTTP для certbot'
@@ -293,6 +298,16 @@ update-locale LANG=ru_RU.UTF-8
 exit
 ssh -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP
 ```
+
+### 3.8. BBR (ускорение, важно против троттлинга)
+
+Включи прямо сейчас — это часть штатной установки, а не только «лечение» медленной скорости:
+```bash
+printf 'net.core.default_qdisc=fq\nnet.ipv4.tcp_congestion_control=bbr\n' > /etc/sysctl.d/99-xray.conf
+sysctl --system
+sysctl -n net.ipv4.tcp_congestion_control   # -> bbr
+```
+Подробнее (буферы, TCP Fast Open) — в §9.3.
 
 ---
 
@@ -411,12 +426,17 @@ export DEST_DOMAIN="www.samsung.com"
 nano /usr/local/etc/xray/config.json
 ```
 
+> ⚠️ **Критично для ChatGPT/Google:** ниже в `outbounds.freedom` стоит `"domainStrategy": "UseIPv4"` и добавлен `dns.queryStrategy=UseIPv4`. Без этого на dual-stack сервере выход утекает по **IPv6** (часто из RU-диапазона хостера) → OpenAI/Google отдают `unsupported_country`, даже если IPv4 чистый. Не удаляй эти строки. (И не включай IPv6 на сервере без нужды — см. §2.1.)
+
 ```json
 {
   "log": {
     "loglevel": "warning",
     "access": "/var/log/xray/access.log",
     "error": "/var/log/xray/error.log"
+  },
+  "dns": {
+    "queryStrategy": "UseIPv4"
   },
   "inbounds": [
     {
@@ -461,7 +481,7 @@ nano /usr/local/etc/xray/config.json
   "outbounds": [
     {
       "protocol": "freedom",
-      "settings": {},
+      "settings": { "domainStrategy": "UseIPv4" },
       "tag": "direct"
     },
     {
@@ -839,17 +859,18 @@ scp -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP:~/xray-qr.png ~/Downloads/
 Клиент: Shadowrocket (платный, $2.99) или Streisand (бесплатный)
 Ссылка: App Store
 
-Shadowrocket:
+Shadowrocket (проще — импортом vless-ссылки/QR из §6.2–6.3; ручной ввод легко оставить неполным):
 1. Открываем приложение
 2. Нажимаем "+" → "Type: VLESS"
-3. Вручную вводим:
+3. Вручную вводим — **все** поля (без Short ID / Flow подключение НЕ заработает):
    - Address: YOUR_SERVER_IP
    - Port: 443
    - UUID: f8e7d9c2-1a3b-4f5e-8d7c-9b2a1e3f4d5c
-   - TLS: включить
-   - Server Name: www.samsung.com
-   - Reality: включить
-   - Public Key: z8mFQx_your_public_key_here
+   - TLS/Security: **reality**, Server Name (SNI): www.samsung.com
+   - Public Key (pbk): z8mFQx_your_public_key_here
+   - **Short ID (sid): твой shortId** (из config сервера)
+   - **Flow: xtls-rprx-vision**
+   - Fingerprint (fp): chrome
 4. Сохраняем и подключаемся
 
 Streisand:
@@ -976,8 +997,8 @@ sudo nano /usr/local/etc/xray/client-config.json
 ```
 
 ```bash
-# Создаём systemd-unit
-sudo cat > /etc/systemd/system/xray-client.service <<EOF
+# Создаём systemd-unit (через tee — редирект '>' выполнился бы БЕЗ root и упал)
+sudo tee /etc/systemd/system/xray-client.service > /dev/null <<'EOF'
 [Unit]
 Description=Xray Client
 After=network.target
@@ -1074,7 +1095,8 @@ EOF
 chmod +x /usr/local/bin/traffic-limit.sh
 
 # Запускаем через cron (ежедневно)
-echo "0 2 * * * /usr/local/bin/traffic-limit.sh" | crontab -
+# добавляем в crontab, НЕ затирая существующее:
+( crontab -l 2>/dev/null | grep -v traffic-limit.sh; echo "0 2 * * * /usr/local/bin/traffic-limit.sh" ) | crontab -
 ```
 
 ### 7.3. Ротация ключей (безопасность)
@@ -1162,7 +1184,7 @@ if ! systemctl is-active --quiet xray; then
 fi
 
 # Проверяем порт 443
-if ! nc -z localhost 443; then
+if ! ss -tln | grep -q ':443 '; then
     echo "Port 443 not listening, restarting Xray"
     systemctl restart xray
 fi
@@ -1171,7 +1193,7 @@ EOF
 chmod +x /usr/local/bin/xray-healthcheck.sh
 
 # Добавляем в cron (каждые 5 минут)
-echo "*/5 * * * * /usr/local/bin/xray-healthcheck.sh" | crontab -
+( crontab -l 2>/dev/null | grep -v xray-healthcheck.sh; echo "*/5 * * * * /usr/local/bin/xray-healthcheck.sh" ) | crontab -
 ```
 
 > 💡 Готовый health-check с авто-восстановлением, кросс-серверной проверкой туннеля и Telegram-алертами — в [optional-enhancements.md](optional-enhancements.md) (`scripts/vpn-healthcheck.sh`, `scripts/tunnel-check.sh`). Он умнее этого мини-скрипта: ловит не только «сервис упал», но и «сервис жив, а туннель мёртв».
@@ -1223,7 +1245,7 @@ EOF
 chmod +x /usr/local/bin/xray-backup.sh
 
 # Запускаем еженедельно (воскресенье 3:00)
-echo "0 3 * * 0 /usr/local/bin/xray-backup.sh" | crontab -
+( crontab -l 2>/dev/null | grep -v xray-backup.sh; echo "0 3 * * 0 /usr/local/bin/xray-backup.sh" ) | crontab -
 
 # Скачиваем на локальную машину
 scp -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP:/root/xray-backups/xray-config-*.tar.gz ~/backups/
@@ -1325,22 +1347,16 @@ xray run -test -config /usr/local/etc/xray/config.json
 # Редактируем конфиг Xray
 nano /usr/local/etc/xray/config.json
 
-# Добавляем в inbound:
+# Добавляем ТОЛЬКО блок "sockopt" ВНУТРЬ существующего streamSettings inbound,
+# рядом с security:"reality"/realitySettings — НЕ заменяй весь streamSettings целиком
+# (иначе потеряешь Reality-маскировку и клиент упадёт в fallback):
 ```
 
 ```json
-"streamSettings": {
-  "network": "tcp",
-  "tcpSettings": {
-    "header": {
-      "type": "none"
-    }
-  },
   "sockopt": {
     "tcpKeepAliveInterval": 30,
     "tcpKeepAliveIdle": 300
   }
-}
 ```
 
 ```bash
@@ -1497,7 +1513,7 @@ systemctl restart systemd-resolved
 
 ```bash
 # Смотрим активные подключения
-netstat -tn | grep :443 | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn
+ss -tn state established '( sport = :443 )' | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn
 
 # Если один IP > 100 подключений → атака
 ```
@@ -1578,6 +1594,24 @@ xray x25519 -i "<privateKey из config.json>"   # -> Password(PublicKey) == pbk
 ```
 Проверенные dest: `www.samsung.com`, `dl.google.com`, `addons.mozilla.org`. Избегай `www.microsoft.com` и всего за Cloudflare.
 
+### 9.11. Потерял SSH-доступ (лок-аут)
+
+Частые причины: закрыл порт 22 в UFW до подтверждения нового порта; сломал `sshd_config`; отключил пароли, а ключ не работает.
+
+**Восстановление (не требует SSH):**
+1. Открой **веб-консоль / VNC / recovery** в панели хостера (DigitalOcean: Access → Launch Console; у большинства есть аналог) — это доступ к серверу в обход SSH/фаервола.
+2. Через консоль почини причину:
+   ```bash
+   ufw allow 22/tcp        # вернуть SSH-порт
+   ufw status
+   sshd -T | grep -iE "port|passwordauthentication"   # проверить эффективный конфиг
+   # откатить плохой drop-in, если он ломает вход:
+   # rm /etc/ssh/sshd_config.d/00-hardening.conf ; systemctl restart ssh
+   ```
+3. Крайний случай — восстановись из snapshot/бэкапа панели.
+
+> Профилактика: держи ВТОРУЮ SSH-сессию открытой при правках sshd/ufw, и не режь старый доступ, пока новый не подтверждён.
+
 ---
 
 ## 10. Чек-лист после установки
@@ -1609,7 +1643,7 @@ cat >> ~/.bashrc <<'EOF'
 alias xray-status='systemctl status xray'
 alias xray-restart='systemctl restart xray && journalctl -u xray -f'
 alias xray-logs='tail -f /var/log/xray/error.log'
-alias xray-connections='netstat -tn | grep :443'
+alias xray-connections='ss -tn state established '( sport = :443 )''
 alias xray-traffic='vnstat -l'
 alias xray-check='curl -so /dev/null -w "%{http_code}" https://YOUR_SERVER_IP && echo " OK" || echo " FAIL"'
 EOF
@@ -1640,7 +1674,9 @@ echo 'APT::Periodic::Unattended-Upgrade "1";' >> /etc/apt/apt.conf.d/20auto-upgr
 # Создание пользователя vpnuser
 useradd -m -s /bin/bash vpnuser
 usermod -aG sudo vpnuser
-echo "vpnuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vpnuser
+# sudo с паролем (безопаснее NOPASSWD: компрометация ключа != мгновенный root).
+# Если нужен беспарольный sudo для автоматизации — замени на NOPASSWD осознанно.
+usermod -aG sudo vpnuser
 
 # Копирование SSH-ключей для vpnuser
 mkdir -p /home/vpnuser/.ssh
@@ -1649,12 +1685,13 @@ chown -R vpnuser:vpnuser /home/vpnuser/.ssh
 chmod 700 /home/vpnuser/.ssh
 chmod 600 /home/vpnuser/.ssh/authorized_keys
 
-# SSH Hardening
-sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-echo "AllowUsers vpnuser" >> /etc/ssh/sshd_config
-systemctl restart sshd
+# SSH Hardening — через drop-in 00-*, который читается РАНЬШЕ cloud-init'ного 50-cloud-init.conf
+# (иначе sed по главному конфигу молча перебивается 'PasswordAuthentication yes' из cloud-init,
+#  плюс дефолт 24.04 — '#PermitRootLogin prohibit-password', и sed по '#...yes' не находит строку)
+printf 'PermitRootLogin no\nPasswordAuthentication no\nPubkeyAuthentication yes\nAllowUsers vpnuser\n' \
+  > /etc/ssh/sshd_config.d/00-hardening.conf
+sshd -t && systemctl restart ssh
+sshd -T | grep -i passwordauthentication   # проверка: должно быть 'no'
 
 # Настройка Fail2Ban
 cat > /etc/fail2ban/jail.local <<EOF

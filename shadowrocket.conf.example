@@ -106,9 +106,11 @@ RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/r
 RULE-SET,https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Shadowrocket/Privacy/Privacy.list,REJECT
 
 # === Свой список РФ-доменов напрямую ===
-# Вариант А: положи ru-direct.list рядом и раздавай по HTTP со своего сервера:
-# RULE-SET,http://YOUR_SERVER_IP:PORT/ru-direct.list,DIRECT
-# Вариант Б: впиши домены прямо здесь (DOMAIN-SUFFIX,example.ru,DIRECT).
+# Вариант Б (рекомендуется новичкам): впиши домены прямо здесь — DOMAIN-SUFFIX,example.ru,DIRECT
+# Вариант А (продвинутое): раздавай ru-direct.list со своего сервера. Только по HTTPS!
+#   По plain http:// маршрутные правила (что идёт мимо туннеля) едут открыто через ТСПУ — не надо.
+#   HTTPS без покупки домена — Caddy + sslip.io (см. optional-enhancements.md, п.1):
+# RULE-SET,https://<IP>.sslip.io:8443/<secret>/ru-direct.list,DIRECT
 
 # === Российские ресурсы — GeoIP fallback ===
 GEOIP,RU,DIRECT

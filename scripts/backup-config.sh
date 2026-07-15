@@ -18,7 +18,8 @@ for p in \
   /etc/systemd/system/tunnel-check.service /etc/systemd/system/tunnel-check.timer \
   /usr/local/bin/vpn-healthcheck.sh /usr/local/bin/tunnel-check.sh \
   /var/www/sub \
-  /etc/sysctl.d/99-xray-tuning.conf ; do
+  /etc/sysctl.d/99-xray.conf /etc/sysctl.d/99-xray-tuning.conf \
+  /etc/ssh/sshd_config.d/00-hardening.conf ; do
   [ -e "$p" ] && FILES="$FILES $p"
 done
 
