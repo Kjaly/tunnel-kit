@@ -16,10 +16,17 @@ for p in \
   /etc/systemd/system/xray.service.d /etc/systemd/system/caddy.service.d \
   /etc/systemd/system/vpn-healthcheck.service /etc/systemd/system/vpn-healthcheck.timer \
   /etc/systemd/system/tunnel-check.service /etc/systemd/system/tunnel-check.timer \
+  /etc/systemd/system/vpn-usage.service /etc/systemd/system/vpn-usage.timer \
+  /etc/systemd/system/vpn-digest.service /etc/systemd/system/vpn-digest.timer \
+  /etc/systemd/system/vpn-monthly.service /etc/systemd/system/vpn-monthly.timer \
+  /etc/systemd/system/vpnbot.service \
   /usr/local/bin/vpn-healthcheck.sh /usr/local/bin/tunnel-check.sh \
+  /usr/local/bin/vpn-usage-collect.sh /usr/local/bin/vpn-traffic-alert.sh \
+  /usr/local/bin/vpnctl.sh /usr/local/bin/vpnbot.py \
+  /etc/vpnbot/bot.conf /etc/sudoers.d/vpnbot \
+  /var/lib/vpn-usage \
   /var/www/sub \
-  /etc/sysctl.d/99-xray.conf /etc/sysctl.d/99-xray-tuning.conf \
-  /etc/ssh/sshd_config.d/00-hardening.conf ; do
+  /etc/sysctl.d/99-xray.conf /etc/sysctl.d/99-xray-tuning.conf ; do
   [ -e "$p" ] && FILES="$FILES $p"
 done
 
@@ -29,5 +36,8 @@ chmod 600 "$OUT"
 ls -1t "$DEST"/tunnel-kit-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
 
 echo "✅ Бэкап: $OUT ($(du -h "$OUT" | cut -f1))"
-echo "   Внутри: xray config+ключи, подписка, hardening, systemd-юниты, скрипты, sysctl."
-echo "   Восстановление на чистом сервере: tar xzf <архив> -C / && systemctl daemon-reload && systemctl restart xray"
+echo "   Внутри: xray config+ключи, подписка, hardening, systemd-юниты, скрипты, sysctl,"
+echo "   учёт трафика (/var/lib/vpn-usage: история + квоты) и конфиг бота."
+echo "   Восстановление на чистом сервере:"
+echo "     tar xzf <архив> -C / && systemctl daemon-reload && systemctl restart xray"
+echo "     # если ставился бот: useradd --system ... vpnbot (см. install-vpn-bot.sh), затем systemctl restart vpnbot"
