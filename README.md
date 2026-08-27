@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/github/last-commit/Kjaly/tunnel-kit?style=flat-square&label=обновлён&color=1a7f37" alt="Последний коммит">
   <img src="https://img.shields.io/badge/протокол-VLESS%20%2B%20Reality-0969da?style=flat-square" alt="Протокол">
   <img src="https://img.shields.io/badge/сервер-Ubuntu%2022.04%20%C2%B7%2024.04-e95420?style=flat-square" alt="ОС сервера">
-  <img src="https://img.shields.io/badge/секреты-gitleaks-8250df?style=flat-square" alt="Секрет-сканер">
+  <img src="https://img.shields.io/github/license/Kjaly/tunnel-kit?style=flat-square&label=лицензия&color=8250df" alt="Лицензия">
 </p>
 
 <p align="center">
@@ -273,6 +273,12 @@ xray -test -config /usr/local/etc/xray/config.json && systemctl restart xray
 
 - Ключи, vless-ссылки и URL подписки — это доступ к твоему VPN. Не публикуй их; если утекли, [ротация](#ротация-ключей) занимает пару минут.
 - Бэкап-архив содержит приватные ключи и токен бота — держи его только на сервере, права 600.
+
+---
+
+## Лицензия
+
+[MIT](LICENSE) — используй, меняй и распространяй свободно, сохраняя копирайт.
 
 ---
 
