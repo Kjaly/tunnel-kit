@@ -21,6 +21,8 @@ bin/
 
 # --- Мусор ---
 .DS_Store
+__pycache__/
+*.pyc
 results.json
 results.txt
 .claude/
