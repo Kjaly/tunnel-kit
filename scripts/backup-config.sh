@@ -1,13 +1,16 @@
 #!/bin/bash
 # Бэкап критичных конфигов/ключей VPN-сервера в один архив (/root/backups).
 # Запусти вручную или по systemd-таймеру. Архив содержит СЕКРЕТЫ — не пушь в git, не выноси с сервера в открытом виде.
-set -u
+set -euo pipefail
+umask 077
 DEST=/root/backups
 mkdir -p "$DEST"; chmod 700 "$DEST"
 STAMP=$(date +%Y%m%d-%H%M%S)
-OUT="$DEST/tunnel-kit-$STAMP.tar.gz"
+OUT=$(mktemp "$DEST/tunnel-kit-$STAMP-XXXXXX.tar.gz")
+cleanup() { rm -f "$OUT"; }
+trap cleanup EXIT
 
-FILES=""
+FILES=()
 for p in \
   /usr/local/etc/xray/config.json \
   /root/sub-nodes.txt /root/sub-secret.txt /root/vpn-alert.conf \
@@ -27,11 +30,17 @@ for p in \
   /var/lib/vpn-usage \
   /var/www/sub \
   /etc/sysctl.d/99-xray.conf /etc/sysctl.d/99-xray-tuning.conf ; do
-  [ -e "$p" ] && FILES="$FILES $p"
+  [ ! -e "$p" ] || FILES+=("$p")
 done
 
-tar czf "$OUT" $FILES 2>/dev/null
+if [ "${#FILES[@]}" -eq 0 ]; then
+  echo "❌ Нет файлов для бэкапа" >&2
+  exit 1
+fi
+# Не скрываем ошибки tar и не удаляем старые архивы при неудаче.
+tar czf "$OUT" "${FILES[@]}"
 chmod 600 "$OUT"
+trap - EXIT
 # держим последние 5 бэкапов
 ls -1t "$DEST"/tunnel-kit-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
 

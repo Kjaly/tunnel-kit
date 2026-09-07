@@ -204,7 +204,13 @@ def main() -> int:
         print(f"error: не разобрал домашнюю подсеть {args.home_subnet!r}", file=sys.stderr)
         return 1
 
-    cfg = parse_wg_conf(args.conf)
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", args.interface):
+        parser.error("недопустимое имя интерфейса")
+    try:
+        ipaddress.IPv4Address(args.gateway)
+        cfg = parse_wg_conf(args.conf)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
 
     if cfg.full_tunnel:
         print(
@@ -222,29 +228,16 @@ def main() -> int:
 
     collisions = find_collisions(networks, home)
 
-    print(f"# Источник:        {args.conf}")
-    print(f"# Подсетей:        {len(networks)}")
-    print(f"# Домашняя сеть:   {home}")
-    if cfg.endpoint:
-        print(f"# Endpoint:        {cfg.endpoint}")
-    if cfg.dns:
-        print(f"# DNS из конфига:  {', '.join(cfg.dns)}")
-        print("#   -> «Маршруты DNS» на KeeneticOS 5.0/5.1 несовместимы с политиками XKeen.")
-        print("#      Корпоративный домен вешать условным upstream'ом в AdGuard Home.")
-    print()
+    if args.format in ("bat", "cli", "all") and any(net.version == 6 for net in networks):
+        print("error: bat/cli поддерживают только IPv4; для IPv6 используй --format xkeen", file=sys.stderr)
+        return 1
 
+    print(f"Подсетей: {len(networks)}; домашняя сеть: {home}", file=sys.stderr)
     if collisions:
-        print("#" + "=" * 70)
-        print("# ВНИМАНИЕ: пересечение с домашней подсетью")
-        for net in collisions:
-            print(f"#   {net}")
-        print("#")
-        print("# Маршрут в туннель перебьёт локальный адрес: домашнее устройство станет")
-        print("# недоступно, а выглядеть это будет как «глючит сеть», а не как ошибка маршрута.")
-        print("# Лечится сменой домашней подсети (например, 192.168.10.0/24)")
-        print("# либо исключением этих адресов из списка.")
-        print("#" + "=" * 70)
-        print()
+        print("warning: пересечение с домашней подсетью: "
+              + ", ".join(map(str, collisions)), file=sys.stderr)
+        print("Смени домашнюю подсеть или исключи конфликтующие маршруты перед импортом.",
+              file=sys.stderr)
 
     blocks: list[tuple[str, str]] = []
     if args.format in ("bat", "all"):

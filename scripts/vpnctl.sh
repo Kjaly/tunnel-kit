@@ -46,16 +46,12 @@ apply_config() {
   cp -a "$CFG" "$bak"
   install -m 644 -o root -g root "$tmp" "$CFG"
   rm -f "$tmp"
-  systemctl restart xray
-  sleep 2
-
-  if systemctl is-active --quiet xray && ss -tln | grep -q ':443 '; then
+  if systemctl restart xray && sleep 2 && systemctl is-active --quiet xray && ss -tln | grep -q ':443 '; then
     echo "✅ xray перезапущен, :443 слушает (бэкап: $bak)"
   else
     echo "⚠️  проблема после рестарта — откатываю на $bak" >&2
     cp -a "$bak" "$CFG"
-    systemctl restart xray; sleep 2
-    if systemctl is-active --quiet xray && ss -tln | grep -q ':443 '; then
+    if systemctl restart xray && sleep 2 && systemctl is-active --quiet xray && ss -tln | grep -q ':443 '; then
       die "конфиг откачен на предыдущую версию, xray снова работает"
     else
       die "КРИТИЧНО: xray не поднимается даже на старом конфиге — нужна ручная проверка на сервере"

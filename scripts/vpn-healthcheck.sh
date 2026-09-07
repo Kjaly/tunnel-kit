@@ -19,7 +19,7 @@ SSLIP="${SERVER_IP}.sslip.io"
 ts() { date "+%Y-%m-%d %H:%M:%S"; }
 now() { date "+%d.%m %H:%M"; }
 log() { echo "$(ts) $1" >> "$LOG"; }
-flag() { case "$1" in NL) echo 🇳🇱;; RU) echo 🇷🇺;; DE) echo 🇩🇪;; FI) echo 🇫🇮;; US) echo 🇺🇸;; GB) echo 🇬🇧;; FR) echo 🇫🇷;; NL) echo 🇳🇱;; "") echo 🌍;; *) echo "🌍 $1";; esac; }
+flag() { case "$1" in NL) echo 🇳🇱;; RU) echo 🇷🇺;; DE) echo 🇩🇪;; FI) echo 🇫🇮;; US) echo 🇺🇸;; GB) echo 🇬🇧;; FR) echo 🇫🇷;; "") echo 🌍;; *) echo "🌍 $1";; esac; }
 
 problems=(); crit=0; warn=0
 

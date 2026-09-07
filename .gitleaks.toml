@@ -1,0 +1,10 @@
+title = "tunnel-kit secret detection"
+[extend]
+useDefault = true
+
+[[rules]]
+id = "vpn-private-key"
+description = "Raw Reality or WireGuard private/preshared key"
+regex = '''(?i)(?:privatekey|presharedkey)["']?\s*[:=]\s*["']?([A-Za-z0-9_+/-]{43}=?)'''
+secretGroup = 1
+keywords = ["privatekey", "presharedkey"]

@@ -13,7 +13,7 @@
      cat ~/.ssh/xray_key.pub                        # это вставишь в поле SSH при создании VPS
      ```
    - Windows — в PowerShell та же команда `ssh-keygen -t ed25519 -f $HOME\.ssh\xray_key` (ssh есть в Windows 10/11 из коробки), паблик: `type $HOME\.ssh\xray_key.pub`.
-2. **Создай VPS у не-российского хостера.** Критично: OpenAI/Google банят по ASN, и российский хостер (даже с сервером в ЕС) даёт `unsupported_country`. Универсальные шаги — одинаковы у любого провайдера (DigitalOcean, Vultr, Contabo, OVH; Hetzner требует паспорт):
+2. **Создай VPS в подходящем регионе.** Проверь условия провайдера, возможность смены IP и консоль восстановления. Доступность сервисов проверяется на конкретном IP и аккаунте; страна хостера не даёт гарантии.
    1. Зарегистрируйся, привяжи карту (иностранная работает; из РФ — карта другой страны/крипта у части хостеров).
    2. Create Server / Droplet / Instance.
    3. **Регион/локация**: Нидерланды, Германия или Финляндия (низкий пинг из РФ).
@@ -47,7 +47,7 @@
 SERVER_IP      = <IP сервера>
 SSH_KEY        = <путь к приватному ключу, напр. ~/.ssh/xray_key>
 SSH_USER       = root
-REALITY_DEST   = www.samsung.com          # проверенный Reality-dest, НЕ Cloudflare (www.microsoft.com НЕ работает!)
+REALITY_DEST   = www.samsung.com          # кандидат; проверить TLS и реальное соединение
 NODE_NAME      = MY-VPN                    # имя узла в клиенте (латиница/цифры/дефис)
 # --- опционально, для раздельного туннелирования рабочих IP ---
 WORK_WG_FILE   = нет                       # или путь к локальному файлу WireGuard (НЕ вставляй ключи сюда)
@@ -59,11 +59,10 @@ WORK_IPS       = нет                       # или список IP чере�
    curl -4 -s https://chatgpt.com/cdn-cgi/trace | grep -E "^(ip|loc)="
    curl -4 -s -o /dev/null -w "aistudio:%{http_code}\n" -L https://aistudio.google.com/
    curl -4 -s https://ipinfo.io/json | grep -E '"(country|org)"'
-   Требование: loc == реальная страна сервера (не RU), aistudio == 200, org != российский хостер.
-   ЕСЛИ IP «грязный» (loc=RU, или aistudio!=200, или org российский) — ОСТАНОВИСЬ и скажи пользователю
-   пересоздать сервер у не-российского хостера. НЕ продолжай настройку.
+   Это диагностические сигналы, а не гарантия доступа. При ошибке проверь DNS, соединение,
+   ограничения сервиса и аккаунта. Не объявляй IP заблокированным только по ASN или HTTP-коду.
 2. НЕ ПОТЕРЯЙ SSH. Перед `ufw enable` разреши порт 22. Перед отключением паролей проверь вход по ключу
-   ОТДЕЛЬНОЙ сессией. `xray -test` перед каждым рестартом.
+   ОТДЕЛЬНОЙ сессией. `xray run -test` перед каждым рестартом.
 </hard_gates>
 
 <instructions>
@@ -80,7 +79,7 @@ WORK_IPS       = нет                       # или список IP чере�
    dest/serverNames=REALITY_DEST, privateKey + оба shortId; sniffing routeOnly=true;
    outbound freedom с domainStrategy=UseIPv4 (форс IPv4 — иначе утечка на IPv6 и страновой бан) + blackhole;
    dns queryStrategy=UseIPv4; routing: блок bittorrent, geosite:category-ads-all, geoip:private.
-   Сделай бэкап старого конфига, затем `xray -test` и рестарт. Проверь `ss -tlnp | grep :443`.
+   Сделай бэкап старого конфига, затем `xray run -test` и рестарт. Проверь `ss -tlnp | grep :443`.
 6. Тюнинг (/etc/sysctl.d/99-xray.conf): BBR (fq + tcp_congestion_control=bbr), tcp_fastopen=3,
    увеличенные буферы. Подними LimitNOFILE=1048576 через systemd drop-in для xray. Применить, рестарт.
 7. Безопасность (в этом порядке): `ufw allow 22/tcp` и `ufw allow 443/tcp`, затем `ufw --force enable`;
@@ -89,11 +88,11 @@ WORK_IPS       = нет                       # или список IP чере�
    `sshd -t`, reload, и ОБЯЗАТЕЛЬНО проверь новый вход по ключу отдельной сессией.
 9. Собери vless-ссылку:
    vless://UUID@SERVER_IP:443?security=reality&encryption=none&pbk=PUBLICKEY&fp=chrome&sni=REALITY_DEST&sid=SHORTID1&type=tcp&flow=xtls-rprx-vision#NODE_NAME
-   Сгенерь QR: ANSI в терминал (`qrencode -t ANSIUTF8 "<ссылка>"`) и PNG-файл.
+   Сохрани ссылку и QR в приватные файлы с правами 600; не печатай их в терминал или чат.
 10. Сгенерируй клиентский конфиг Shadowrocket по <client_config_spec>.
-11. Финальная проверка: xray active, `xray -test` OK, :443 слушает и доступен снаружи,
-    <hard_gates> п.1 повторно (openai-api `curl -4 https://api.openai.com/v1/models` == 401 = регион ок).
-12. Сохрани все данные (IP, ключи, ссылку, что настроено) в отдельный файл creds и НАПОМНИ не пушить его в git.
+11. Финальная проверка: xray active, `xray run -test` OK, :443 слушает и доступен снаружи,
+    <hard_gates> п.1 повторно (HTTP-код API не доказывает доступность сервиса; нужна проверка после входа реальным клиентом).
+12. Под `umask 077` сохрани все данные (IP, ключи, ссылку, что настроено) в отдельный файл creds и НАПОМНИ не пушить его в git.
 </instructions>
 
 <client_config_spec>
@@ -115,15 +114,15 @@ WORK_IPS       = нет                       # или список IP чере�
   11) GEOIP,RU,DIRECT.
   12) FINAL,Switch.
 - [MITM]: enable=false.
-Отдай пользователю содержимое файла и краткую инструкцию по импорту (добавить узел по vless-ссылке
+Отдай пользователю путь к приватному файлу и краткую инструкцию по импорту (добавить узел по vless-ссылке
 с именем ровно NODE_NAME, импортировать конфиг, Global Routing=Config).
 </client_config_spec>
 
 <constraints>
 - Реализуй ТОЛЬКО описанное. Никаких лишних панелей (3x-ui), доменов, сертификатов, доп. портов.
-- REALITY_DEST не должен быть за Cloudflare (его в РФ троттлят) — если пользователь дал Cloudflare-домен, предупреди и предложи www.samsung.com. НЕ используй www.microsoft.com — он отдаёт TLS1.3, но Reality не может одолжить его хендшейк (проверено).
+- Проверь REALITY_DEST по актуальной документации Xray и реальным клиентским соединением. Совместимость зависит от сайта и сети.
 - Всегда форсируй IPv4-выход (UseIPv4). Никогда не оставляй пароли включёнными после хардненинга.
-- БЕЗОПАСНОСТЬ СЕКРЕТОВ (важно): НИКОГДА не выводи приватные ключи (Reality privateKey, WireGuard privateKey/presharedKey) в чат — всё, что ты пишешь в ответ, видит LLM-провайдер и его логи. Пиши секреты напрямую на сервере в creds-файл под `umask 077`. В ответе показывай только ПУБЛИЧНОЕ: vless-ссылку (pbk публичен by design), QR, IP. Если задан WORK_WG_FILE — читай ключи из этого файла на диске, НЕ из тела промпта.
+- БЕЗОПАСНОСТЬ СЕКРЕТОВ (важно): НИКОГДА не выводи приватные ключи (Reality privateKey, WireGuard privateKey/presharedKey) в чат — всё, что ты пишешь в ответ, видит LLM-провайдер и его логи. Пиши секреты напрямую на сервере в creds-файл под `umask 077`. VLESS-ссылка, QR и URL подписки тоже являются секретами доступа, хотя pbk сам по себе публичен. В ответе показывай только пути к приватным файлам и несекретную сводку. Если задан WORK_WG_FILE — читай ключи из этого файла на диске, НЕ из тела промпта.
 - Генерируй shortId случайно (`openssl rand -hex 8`), не бери литералы из примеров.
 - Если шаг упал — покажи реальный вывод ошибки и останови цепочку, не «чини» вслепую.
 </constraints>
@@ -132,8 +131,8 @@ WORK_IPS       = нет                       # или список IP чере�
 В конце верни одним блоком:
 1. Итог по серверу: IP, страна/ASN, статус проверки OpenAI/Google (✅/❌).
 2. Что настроено: версия xray, dest, хардненинг (ufw/fail2ban/ssh), тюнинг (bbr/tfo).
-3. vless-ссылку и QR (ANSI + путь к PNG).
-4. Полное содержимое shadowrocket.conf в кодблоке.
+3. Пути к файлам VLESS-ссылки и QR (без содержимого).
+4. Путь к shadowrocket.conf (права 600, без содержимого в ответе).
 5. Чек-лист проверки для пользователя (ifconfig.me, вход в ChatGPT, App Store).
 6. Явное напоминание: creds-файл и *.conf в git не коммитить.
 </output_format>

@@ -26,3 +26,26 @@ __pycache__/
 results.json
 results.txt
 .claude/
+
+# --- Приватные выгрузки и архивы ---
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.bak
+*.bak.*
+config.json
+users.json
+sub-nodes.txt
+ip_exclude.lst
+05_routing.json
+backups/
+private/
+
+# --- Локальная среда разработки ---
+.idea/
+.vscode/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/

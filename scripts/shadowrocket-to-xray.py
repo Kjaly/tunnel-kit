@@ -12,9 +12,8 @@ shadowrocket-to-xray.py — переносит правила Shadowrocket в ro
     geoip:ru  НЕ РАБОТАЕТ
 
 Xray читает префикс `geoip:` строго из файла `geoip.dat`, а XKeen раскладывает
-базы под другими именами (`geoip_v2fly.dat` и подобные). Конфиг при этом валиден,
-роутер работает, ошибок в логе нет — просто правило молча не срабатывает, и весь
-российский трафик идёт через VPS. Узнаёшь об этом, когда банк попросит подтвердить
+базы под другими именами (`geoip_v2fly.dat` и подобные). Если geoip.dat отсутствует, Xray может отклонить конфиг. Если загружена другая
+база, результат маршрутизации может отличаться от ожидаемого. Узнаёшь об этом, когда банк попросит подтвердить
 вход из другой страны. Правильная запись — `ext:geoip_v2fly.dat:ru`.
 
 Соответствие синтаксиса
@@ -40,7 +39,6 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
-import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -81,7 +79,12 @@ def parse_rules(path: Path, geoip_file: str) -> tuple[list[str], list[str], list
         if not line or line.startswith(("#", ";", "//")):
             continue
 
+        if line.startswith("["):
+            raise ValueError(f"строка {lineno}: нужен отдельный DIRECT-список, не полный конфиг")
+
         parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 3 and parts[2].upper() not in ("DIRECT", "NO-RESOLVE"):
+            raise ValueError(f"строка {lineno}: политика {parts[2]!r} не является DIRECT")
         kind = parts[0].upper()
 
         if kind in UNSUPPORTED:
@@ -93,6 +96,8 @@ def parse_rules(path: Path, geoip_file: str) -> tuple[list[str], list[str], list
             continue
 
         value = parts[1]
+        if not value:
+            raise ValueError(f"строка {lineno}: пустое значение правила")
 
         if kind in DOMAIN_PREFIX:
             domains[f"{DOMAIN_PREFIX[kind]}{value.lower()}"] = None
@@ -118,7 +123,8 @@ def _valid_cidr(value: str) -> bool:
         return False
 
 
-def build_routing(domains: list[str], ips: list[str], outbound: str, fallback: str) -> dict:
+def build_routing(domains: list[str], ips: list[str], outbound: str, fallback: str,
+                  geoip_file: str = DEFAULT_GEOIP_FILE) -> dict:
     """
     Собирает секцию routing. Порядок правил важен: Xray применяет первое совпавшее.
 
@@ -129,7 +135,7 @@ def build_routing(domains: list[str], ips: list[str], outbound: str, fallback: s
     rules: list[dict] = [
         {
             "_comment": "Локальная сеть и приватные адреса — всегда напрямую.",
-            "ip": ["geoip:private"],
+            "ip": [f"ext:{geoip_file}:private"],
             "outboundTag": outbound,
         }
     ]
@@ -210,7 +216,11 @@ def main() -> int:
         print(f"error: не нашёл файл {args.rules}", file=sys.stderr)
         return 1
 
-    domains, ips, warnings = parse_rules(args.rules, args.geoip_file)
+    try:
+        domains, ips, warnings = parse_rules(args.rules, args.geoip_file)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
@@ -219,7 +229,7 @@ def main() -> int:
         print("error: не нашёл ни одного пригодного правила", file=sys.stderr)
         return 1
 
-    routing = build_routing(domains, ips, args.outbound, args.fallback)
+    routing = build_routing(domains, ips, args.outbound, args.fallback, args.geoip_file)
     text = render(routing, args.strict_json)
 
     if args.output:

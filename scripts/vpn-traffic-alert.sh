@@ -17,11 +17,11 @@
 set -uo pipefail
 
 # ── настрой под себя (либо переопредели в vpn-alert.conf — он читается ниже) ──
-SERVER_LABEL="MY-VPN"          # понятное имя сервера для алертов (напр. DO-AMS)
-SERVER_IP="YOUR_SERVER_IP"     # публичный IP сервера
-IFACE=eth0                     # публичный интерфейс
-QUOTA_GIB=1000                 # включённый исходящий трафик тарифа, ГиБ/мес
-WARN1=80; WARN2=95             # пороги предупреждений, %
+SERVER_LABEL="${SERVER_LABEL:-MY-VPN}"          # понятное имя сервера для алертов (напр. DO-AMS)
+SERVER_IP="${SERVER_IP:-YOUR_SERVER_IP}"     # публичный IP сервера
+IFACE="${IFACE:-eth0}"                     # публичный интерфейс
+QUOTA_GIB="${QUOTA_GIB:-1000}"                 # включённый исходящий трафик тарифа, ГиБ/мес
+WARN1="${WARN1:-80}"; WARN2="${WARN2:-95}"             # пороги предупреждений, %
 # ─────────────────────────────────────────────────────────────────────────────
 
 ALERT_CONF=/root/vpn-alert.conf
@@ -30,8 +30,8 @@ USAGE_DIR=/var/lib/vpn-usage
 
 # Поправка на трафик, израсходованный ДО того как vnStat начал считать.
 # Применяется только к указанному месяцу и отключается сама при его смене.
-TRAFFIC_OFFSET_MONTH=""
-TRAFFIC_OFFSET_GIB=0
+TRAFFIC_OFFSET_MONTH="${TRAFFIC_OFFSET_MONTH:-}"
+TRAFFIC_OFFSET_GIB="${TRAFFIC_OFFSET_GIB:-0}"
 
 # shellcheck disable=SC1090
 [ -f "$ALERT_CONF" ] && . "$ALERT_CONF"
@@ -99,7 +99,7 @@ case "$MODE" in
     CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%d)
 
     # ── расход за прошедшую неделю (7 полных суток до сегодня, UTC) ──
-    WEEK_DAYS=$(printf '"%s",' $(for i in 1 2 3 4 5 6 7; do date -u -d "-$i day" +%Y-%m-%d; done) | sed 's/,$//')
+    WEEK_DAYS=$(for i in 1 2 3 4 5 6 7; do printf '"%s",' "$(date -u -d "-$i day" +%Y-%m-%d)"; done | sed 's/,$//')
     WEEK_TX=$(vnstat --json d -i "$IFACE" 2>/dev/null \
       | jq -r --arg i "$IFACE" --argjson days "[$WEEK_DAYS]" \
           '[ .interfaces[] | select(.name == $i) | .traffic.day[]?

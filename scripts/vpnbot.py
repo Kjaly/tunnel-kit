@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,7 +52,8 @@ def load_conf(path):
 
 def default_primary_email():
     try:
-        cfg = json.load(open(CFG))
+        with open(CFG) as config_file:
+            cfg = json.load(config_file)
         for ib in cfg.get("inbounds", []):
             if ib.get("protocol") == "vless":
                 clients = ib["settings"]["clients"]
@@ -69,12 +71,6 @@ PRIMARY_EMAIL = CONF_DATA.get("PRIMARY_EMAIL") or default_primary_email()
 SERVER_LABEL = CONF_DATA.get("SERVER_LABEL", "VPN")
 SERVER_IP = CONF_DATA.get("SERVER_IP", "")
 IFACE = CONF_DATA.get("IFACE", "eth0")
-
-if not BOT_TOKEN:
-    log("BOT_TOKEN пуст — проверь /etc/vpnbot/bot.conf")
-    sys.exit(1)
-if not ALLOWED_CHAT_IDS:
-    log("ALLOWED_CHAT_IDS пуст — бот не ответит НИКОМУ, проверь /etc/vpnbot/bot.conf")
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -183,7 +179,8 @@ def ask_confirm(chat_id, action_key, prompt):
 # ── VLESS-ссылка для клиента ──────────────────────────────────────────────
 def build_vless_link(email):
     try:
-        cfg = json.load(open(CFG))
+        with open(CFG) as config_file:
+            cfg = json.load(config_file)
         ib = next(x for x in cfg["inbounds"] if x.get("protocol") == "vless")
         client = next((c for c in ib["settings"]["clients"] if c["email"] == email), None)
         if not client:
@@ -196,7 +193,7 @@ def build_vless_link(email):
         out = subprocess.run(["xray", "x25519", "-i", priv], capture_output=True, text=True, timeout=10).stdout
         pubkey = ""
         for line in out.splitlines():
-            if line.startswith("Password (PublicKey):"):
+            if line.partition(":")[0].strip().lower() in ("password (publickey)", "password", "public key", "publickey"):
                 pubkey = line.split(":", 1)[1].strip()
         if not pubkey:
             return None
@@ -206,7 +203,7 @@ def build_vless_link(email):
         label = urllib.parse.quote(f"{SERVER_LABEL}-{email}")
         return f"vless://{client['id']}@{SERVER_IP}:{port}?{qs}#{label}"
     except Exception as e:
-        log(f"build_vless_link error: {e}")
+        log(f"build_vless_link error: {type(e).__name__}")
         return None
 
 
@@ -307,8 +304,13 @@ def cmd_status(chat_id, args):
 
 def cmd_traffic(chat_id, args):
     chat_action(chat_id)
+    report_env = os.environ.copy()
+    for key in ("SERVER_LABEL", "SERVER_IP", "IFACE", "QUOTA_GIB", "WARN1", "WARN2",
+                "TRAFFIC_OFFSET_MONTH", "TRAFFIC_OFFSET_GIB"):
+        if key in CONF_DATA:
+            report_env[key] = CONF_DATA[key]
     r = subprocess.run(["/usr/local/bin/vpn-traffic-alert.sh", "--dry"],
-                        capture_output=True, text=True, timeout=30)
+                        capture_output=True, text=True, timeout=30, env=report_env)
     send_message(chat_id, f"<pre>{html.escape(r.stdout.strip() or r.stderr.strip())}</pre>")
 
 
@@ -385,17 +387,14 @@ def cmd_qr(chat_id, args):
     if not shutil.which("qrencode"):
         send_message(chat_id, "На сервере нет qrencode: <code>apt-get install -y qrencode</code>")
         return
-    path = f"/tmp/vpnbot-qr-{os.getpid()}.png"
     try:
-        subprocess.run(["qrencode", "-o", path, "-s", "8", link], check=True, timeout=10)
-        send_photo_file(chat_id, path, caption=email)
+        with tempfile.TemporaryDirectory(prefix="vpnbot-qr-") as directory:
+            path = os.path.join(directory, "qr.png")
+            subprocess.run(["qrencode", "-o", path, "-s", "8"], input=link,
+                           text=True, check=True, timeout=10)
+            send_photo_file(chat_id, path, caption=email)
     except Exception as e:
         send_message(chat_id, f"Не получилось собрать QR: {html.escape(str(e))}")
-    finally:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
 
 
 def cmd_adduser(chat_id, args):
@@ -591,6 +590,13 @@ def save_offset(v):
 
 
 def main():
+    if not BOT_TOKEN:
+        log("BOT_TOKEN пуст — проверь /etc/vpnbot/bot.conf")
+        sys.exit(1)
+    if not ALLOWED_CHAT_IDS:
+        log("ALLOWED_CHAT_IDS пуст — бот не ответит НИКОМУ, проверь /etc/vpnbot/bot.conf")
+
+
     offset = load_offset()
     register_bot_profile()
     log(f"vpnbot стартовал, offset={offset}, allowed_chats={len(ALLOWED_CHAT_IDS)}")

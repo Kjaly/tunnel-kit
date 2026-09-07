@@ -54,12 +54,20 @@ ALLOWED_CHAT_IDS=${CHAT_ID:-}
 SERVER_LABEL=${SERVER_LABEL:-$(hostname -s)}
 SERVER_IP=${SERVER_IP:-}
 PRIMARY_EMAIL=${PRIMARY_EMAIL}
-IFACE=eth0
+IFACE=${IFACE:-eth0}
 EOF
   echo "✅ $BOTCONF создан (BOT_TOKEN/CHAT_ID — копия из $ALERT_CONF)"
 else
   echo "ℹ️  $BOTCONF уже настроен — не трогаю (ALLOWED_CHAT_IDS правь вручную при необходимости)"
 fi
+# Несекретные параметры отчёта: бот не может читать конфиг в /root.
+# shellcheck disable=SC1090
+[ ! -f "$ALERT_CONF" ] || . "$ALERT_CONF"
+for setting in QUOTA_GIB WARN1 WARN2 TRAFFIC_OFFSET_MONTH TRAFFIC_OFFSET_GIB; do
+  if ! grep -q "^${setting}=" "$BOTCONF" && [ -n "${!setting:-}" ]; then
+    printf '%s=%s\n' "$setting" "${!setting}" >> "$BOTCONF"
+  fi
+done
 chown vpnbot:vpnbot "$BOTCONF"
 chmod 600 "$BOTCONF"
 
@@ -133,7 +141,7 @@ cat <<EOF
 
 Полезное:
   journalctl -u vpnbot -f                 живые логи бота
-  cat $BOTCONF                            токен/allowlist (600, только root)
+  nano $BOTCONF                           настройки бота (секретный файл, 600)
   jq . $USERS_FILE                        квоты и метаданные пользователей
   visudo -c                               проверить весь sudoers после ручных правок
 

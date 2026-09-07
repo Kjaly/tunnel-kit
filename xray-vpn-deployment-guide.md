@@ -1,6 +1,6 @@
 # Развёртывание VPN-сервера на Xray Core (VLESS + Reality)
 
-> ⚠️ **Хостер решает всё.** Для ChatGPT/Google бери **не-российский** ASN (DigitalOcean, Vultr, Contabo, OVH). Российский хостер (напр. Timeweb, AS210976) даёт `unsupported_country` даже при амстердамской локации — его IP помечен как RU в геобазе OpenAI. См. §9.9.
+> **Проверь доступность на своём IP.** Физическая локация VPS, геобазы и ограничения конкретного сервиса могут различаться. ASN или имя провайдера не гарантируют доступ. См. §9.9.
 >
 > **Две модели доступа — не смешивай.** Этот гайд ведёт к строгому варианту: отдельный пользователь `vpnuser`, root-вход запрещён (смена SSH-порта — опциональна, см. §3.4). Автоматический сценарий ([ai-setup-prompt.md](ai-setup-prompt.md)) проще — `root` по ключу на порту `22`. Выбери ОДИН путь; не применяй cloud-init/хардненинг отсюда поверх результата промпта — рискуешь потерять SSH.
 
@@ -26,14 +26,14 @@
 ### Ubuntu 24.04 LTS (рекомендуется)
 
 **Почему именно он:**
-- Ядро Linux 6.8+ с нативной поддержкой BBRv3 (критично для обхода троттлинга)
+- Поддержка TCP BBR; доступные алгоритмы проверяй через `sysctl net.ipv4.tcp_available_congestion_control`. Параметр `bbr` не гарантирует BBRv3
 - Свежие версии OpenSSL 3.x (TLS 1.3 из коробки)
 - Долгосрочная поддержка до 2029 года
 - Минимальная задержка в патчах безопасности
 
 **Альтернатива — Ubuntu 22.04 LTS:**
 - Используй, если нужна максимальная стабильность
-- Ядро 5.15, BBRv1 (хуже противостоит packet shaping)
+- Версия ядра зависит от образа и установленных обновлений
 - Поддержка до 2027 года
 
 **Требования к серверу:**
@@ -46,21 +46,20 @@
 | Network | 100 Mbps | 200+ Mbps |
 
 **Почему это важно:**
-- 1 vCore не справится с шифрованием при >50 Mbps на 3+ подключениях
-- <512 MB RAM приведёт к OOM при обновлениях системы
+- Пропускная способность зависит от CPU, сети, протокола и нагрузки; измеряй её на своём VPS
+- На малом объёме RAM обновления могут исчерпать память
 
 ---
 
 ## 2. Создание VPS
 
-> ⚠️ Ниже примеры показаны на Timeweb Cloud, но **для ChatGPT/Google выбирай НЕ-российского хостера** (DigitalOcean, Vultr, Contabo, OVH). Timeweb (AS210976) даёт `unsupported_country` для AI-сервисов — используй его только если AI не нужен. Шаги настройки идентичны для любого хостера.
+> Названия разделов панели отличаются у провайдеров. Ниже — общие параметры VPS; перед изменением SSH проверь доступ к консоли восстановления.
 
 ### 2.1. Параметры инстанса
 
 ```
 Регион: Амстердам (AMS) или Франкфурт (FRA)
-    ↳ Москва: ×10 вероятность попасть под блокировку по IP-подсети
-    ↳ Европа: лучшие маршруты в РФ через IX (MSK-IX, DataIX)
+    ↳ Выбирай регион с приемлемой задержкой и нужной доступностью сервисов
 
 Конфигурация:
 - ОС: Ubuntu 24.04 LTS
@@ -81,14 +80,14 @@ ssh-keygen -t ed25519 -C "my-vps" -f ~/.ssh/xray_key
 cat ~/.ssh/xray_key.pub
 ```
 
-**В панели Timeweb:**
+**В панели провайдера:**
 1. Вставь содержимое `~/.ssh/xray_key.pub` в поле SSH-ключа
 2. Отключи вход по паролю (критично!)
 3. Запиши IP-адрес сервера → `YOUR_SERVER_IP`
 
 ### 2.3. Firewall (первый запуск)
 
-**В панели Timeweb Cloud:**
+**В панели провайдера:**
 
 ```
 Правила входящих соединений:
@@ -142,7 +141,8 @@ dpkg-reconfigure -plow unattended-upgrades
 
 ```bash
 # Создаём пользователя
-adduser vpnuser --disabled-password --gecos ""
+adduser vpnuser --gecos ""
+# Задай пароль интерактивно: он нужен для sudo, даже если SSH только по ключу.
 
 # Добавляем в sudo
 usermod -aG sudo vpnuser
@@ -157,16 +157,19 @@ chmod 600 /home/vpnuser/.ssh/authorized_keys
 # Проверяем подключение (НЕ ЗАКРЫВАЙ текущую сессию!)
 # В новом терминале:
 ssh -i ~/.ssh/xray_key vpnuser@YOUR_SERVER_IP
+# В новой сессии проверь повышение прав, затем продолжай настройку:
+sudo -v
+sudo -i
 ```
 
 ### 3.4. SSH Hardening
 
 ```bash
-# Редактируем конфиг
-nano /etc/ssh/sshd_config
+# Создаём drop-in до настроек cloud-init
+nano /etc/ssh/sshd_config.d/00-hardening.conf
 ```
 
-**Изменения:**
+**Изменения (только после успешной проверки нового входа и `sudo -v`):**
 
 ```nginx
 # Отключаем root-вход
@@ -1149,7 +1152,7 @@ systemctl restart xray
 ```bash
 # в /usr/local/etc/xray/config.json -> inbounds[0].settings.clients
 # удали объект с нужным "id" (UUID), затем:
-xray -test -config /usr/local/etc/xray/config.json && systemctl restart xray
+xray run -test -config /usr/local/etc/xray/config.json && systemctl restart xray
 ```
 > Это работает, только если у каждого пользователя СВОЙ UUID (см. §7.1). Если UUID общий — поможет лишь ротация ключей.
 
@@ -1603,17 +1606,11 @@ openssl x509 -in /etc/letsencrypt/live/example.com/fullchain.pem -noout -dates
 
 **Симптомы:** VPN подключается, обычные сайты открываются, но ChatGPT/Gemini/AI Studio пишут `error_code: unsupported_country`, при том что IP-чекер показывает нужную страну (напр. NL).
 
-**Причина:** OpenAI/Google определяют страну по **ASN/геобазе**, а не по карте. IP российского хостера (даже с сервером в ЕС) помечен как RU — это НЕ чинится настройкой сервера.
+**Возможные причины:** геолокация или репутация IP, ограничения региона/аккаунта, DNS и сетевые ошибки. Один ASN не устанавливает причину.
 
-**Решение:**
-```bash
-# Проверь, как OpenAI видит твой сервер (форс IPv4):
-curl -4 -s https://chatgpt.com/cdn-cgi/trace | grep -E "^(ip|loc)="
-curl -4 -s https://ipinfo.io/json | grep -E '"(country|org)"'
-```
-- `org` — российский хостер (Timeweb, aeza, vdsina и т.п.) → **смени хостера** на не-российского (DigitalOcean, Vultr, Contabo, OVH).
-- Убедись, что выход идёт по IPv4 (`freedom.domainStrategy=UseIPv4`) — иначе может утечь на IPv6 из RU-диапазона.
-- Хостеры с почасовой оплатой: если конкретный IP в блок-листе — пересоздай сервер, получишь новый IP.
+Для диагностики проверь выходной IP и ответы сервисов через реального клиента. `cdn-cgi/trace` показывает данные Cloudflare, а не решение о доступе к аккаунту. HTTP `200` у страницы или `401` у API также не доказывает доступность после входа.
+
+Если подтверждена проблема конкретного IP, обсуди с провайдером замену адреса. При разных IPv4/IPv6-маршрутах проверяй оба выхода; примеры этого проекта используют `freedom.domainStrategy=UseIPv4`.
 
 ### 9.10. Клиент не подключается, в логе "REALITY: processed invalid connection ... handshake did not complete"
 
@@ -1697,6 +1694,8 @@ source ~/.bashrc
 
 ## 12. Cloud-init скрипт
 
+Cloud-init оставляет root-вход **по ключу** для первого завершения настройки. После загрузки выполни `passwd vpnuser`, проверь новый SSH-вход и `sudo -v`. Только затем в `/etc/ssh/sshd_config.d/00-hardening.conf` установи `PermitRootLogin no` и `AllowUsers vpnuser`, проверь `sshd -t` и перезагрузи настройки SSH. Пароль в cloud-init не вставляй.
+
 > ⚠️ Это **АЛЬТЕРНАТИВА** ручным разделам 2–3 (автоматизирует базовую настройку при создании VPS), **а не дополнение**. НЕ применяй cloud-init и ручной хардненинг вместе — двойное применение (напр. `ufw --force reset` из раздела 3.6 поверх cloud-init) ломает доступ. Выбери один путь. Cloud-init намеренно оставляет SSH на порту 22.
 
 **Для автоматизации начальной настройки при создании VPS:**
@@ -1718,9 +1717,8 @@ echo 'APT::Periodic::Unattended-Upgrade "1";' >> /etc/apt/apt.conf.d/20auto-upgr
 # Создание пользователя vpnuser
 useradd -m -s /bin/bash vpnuser
 usermod -aG sudo vpnuser
-# sudo с паролем (безопаснее NOPASSWD: компрометация ключа != мгновенный root).
-# Если нужен беспарольный sudo для автоматизации — замени на NOPASSWD осознанно.
-usermod -aG sudo vpnuser
+# Пароль sudo нужно задать интерактивно после cloud-init: passwd vpnuser.
+# До этого сохраняем root-вход по ключу для завершения настройки.
 
 # Копирование SSH-ключей для vpnuser
 mkdir -p /home/vpnuser/.ssh
@@ -1732,7 +1730,7 @@ chmod 600 /home/vpnuser/.ssh/authorized_keys
 # SSH Hardening — через drop-in 00-*, который читается РАНЬШЕ cloud-init'ного 50-cloud-init.conf
 # (иначе sed по главному конфигу молча перебивается 'PasswordAuthentication yes' из cloud-init,
 #  плюс дефолт 24.04 — '#PermitRootLogin prohibit-password', и sed по '#...yes' не находит строку)
-printf 'PermitRootLogin no\nPasswordAuthentication no\nPubkeyAuthentication yes\nAllowUsers vpnuser\n' \
+printf 'PermitRootLogin prohibit-password\nPasswordAuthentication no\nPubkeyAuthentication yes\nAllowUsers root vpnuser\n' \
   > /etc/ssh/sshd_config.d/00-hardening.conf
 sshd -t && systemctl restart ssh
 sshd -T | grep -i passwordauthentication   # проверка: должно быть 'no'

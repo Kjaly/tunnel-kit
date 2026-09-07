@@ -17,6 +17,7 @@ EMAIL="${1:-user@main}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 BAK="${CFG}.bak.${STAMP}"
 TMP=$(mktemp /tmp/xray-cfg.XXXXXX.json)
+trap 'rm -f "$TMP"' EXIT
 
 command -v jq >/dev/null || { echo "❌ нужен jq: apt-get install -y jq"; exit 1; }
 [ -f "$CFG" ] || { echo "❌ не найден $CFG"; exit 1; }
@@ -47,7 +48,7 @@ jq --arg email "$EMAIL" '
     "tag": "api"
   }])
 | .routing.rules = ([{"type":"field","inboundTag":["api"],"outboundTag":"api"}]
-                    + (.routing.rules | map(select((.inboundTag // []) | index("api") | not))))
+                    + ((.routing.rules // []) | map(select((.inboundTag // []) | index("api") | not))))
 ' "$CFG" > "$TMP"
 
 echo "--- изменения (ключи вырезаны) ---"
@@ -63,10 +64,7 @@ fi
 install -m 644 -o root -g root "$TMP" "$CFG"
 rm -f "$TMP"
 
-systemctl restart xray
-sleep 3
-
-if systemctl is-active --quiet xray && ss -tln | grep -q ':443 ' && ss -tln | grep -q '127.0.0.1:10085'; then
+if systemctl restart xray && sleep 3 && systemctl is-active --quiet xray && ss -tln | grep -q ':443 ' && ss -tln | grep -q '127.0.0.1:10085'; then
   echo "✅ xray active, :443 и 127.0.0.1:10085 слушают"
 else
   echo "❌ проблема после рестарта — откат на $BAK"
